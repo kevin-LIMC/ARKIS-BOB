@@ -59,7 +59,12 @@ app.post('/api/auth/login', async (req, res) => {
             res.status(401).json({ error: 'Usuario no encontrado' });
         }
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('ERROR LOGIN:', err);
+        res.status(500).json({ 
+            error: 'Error interno del servidor', 
+            details: err.message,
+            stack: err.stack 
+        });
     }
 });
 
