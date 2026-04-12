@@ -76,7 +76,7 @@ app.get('/api/obras', async (req, res) => {
                 ISNULL((SELECT SUM(monto_total) FROM Finanzas.gastos WHERE id_obra = o.id_obra), 0) as total_gastado
             FROM Operaciones.obras o
             LEFT JOIN Operaciones.clientes c ON o.id_cliente = c.id_cliente
-            LEFT JOIN Config.estados_obra e ON o.id_estado_obra = e.id_estado
+            LEFT JOIN Config.catalogos e ON o.id_estado_obra = e.id_catalogo
         `;
         res.json(result.recordset);
     } catch (err) {
@@ -143,7 +143,7 @@ app.get('/api/obras/:id/presupuesto', async (req, res) => {
                 u.nombre as unidad_nombre,
                 ISNULL((SELECT SUM(monto_total) FROM Finanzas.gastos WHERE id_obra = p.id_obra AND concepto LIKE '%' + p.descripcion + '%'), 0) as gastado_real
             FROM Operaciones.partidas_presupuestarias p
-            LEFT JOIN Config.unidades_medida u ON p.id_unidad_medida = u.id_unidad
+            LEFT JOIN Config.catalogos u ON p.id_unidad_medida = u.id_catalogo
             WHERE p.id_obra = ${id}
             ORDER BY p.codigo_partida
         `;
