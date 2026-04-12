@@ -1,0 +1,346 @@
+{
+  "alertas": [
+    "id_alerta (int)",
+    "id_obra (int)",
+    "tipo_alerta (nvarchar)",
+    "titulo (nvarchar)",
+    "mensaje (nvarchar)",
+    "id_nivel (int)",
+    "leida (bit)",
+    "fecha_creacion (datetime)",
+    "id_usuario_destino (int)",
+    "fecha_lectura (datetime)"
+  ],
+  "asistencia": [
+    "id_asistencia (int)",
+    "id_obra (int)",
+    "id_trabajador (int)",
+    "fecha (date)",
+    "horas_trabajadas (decimal)",
+    "horas_extra (decimal)",
+    "observaciones (nvarchar)"
+  ],
+  "audit_logs": [
+    "id_log (int)",
+    "id_usuario (int)",
+    "tabla_afectada (nvarchar)",
+    "accion (nvarchar)",
+    "registro_id (int)",
+    "datos_anteriores (nvarchar)",
+    "datos_nuevos (nvarchar)",
+    "ip_address (nvarchar)",
+    "fecha_accion (datetime)"
+  ],
+  "auditoria": [
+    "id_auditoria (int)",
+    "tabla (nvarchar)",
+    "operacion (nvarchar)",
+    "fecha (datetime)",
+    "usuario (nvarchar)",
+    "descripcion (nvarchar)"
+  ],
+  "avance_obra": [
+    "id_avance (int)",
+    "id_partida (int)",
+    "fecha_registro (date)",
+    "cantidad_ejecutada (decimal)",
+    "porcentaje_avance (decimal)",
+    "observaciones (nvarchar)",
+    "registrado_por (int)",
+    "fecha_creacion (datetime)"
+  ],
+  "categorias_gasto": [
+    "id_categoria (int)",
+    "nombre_categoria (nvarchar)",
+    "descripcion (nvarchar)"
+  ],
+  "clientes": [
+    "id_cliente (int)",
+    "razon_social (nvarchar)",
+    "ruc (nvarchar)",
+    "direccion (nvarchar)",
+    "telefono (nvarchar)",
+    "correo (nvarchar)",
+    "contacto_nombre (nvarchar)"
+  ],
+  "estados_obra": [
+    "id_estado (int)",
+    "codigo (nvarchar)",
+    "nombre (nvarchar)",
+    "descripcion (nvarchar)",
+    "activo (bit)"
+  ],
+  "flujo_caja": [
+    "id_movimiento (int)",
+    "id_obra (int)",
+    "tipo_movimiento (nvarchar)",
+    "fecha_movimiento (date)",
+    "concepto (nvarchar)",
+    "monto (decimal)",
+    "categoria (nvarchar)",
+    "referencia (nvarchar)",
+    "id_gasto (int)",
+    "observaciones (nvarchar)",
+    "fecha_registro (datetime)"
+  ],
+  "formas_pago": [
+    "id_forma_pago (int)",
+    "codigo (nvarchar)",
+    "nombre (nvarchar)",
+    "activo (bit)"
+  ],
+  "gastos": [
+    "id_gasto (int)",
+    "id_obra (int)",
+    "id_partida (int)",
+    "id_proveedor (int)",
+    "id_categoria (int)",
+    "fecha_gasto (date)",
+    "numero_factura (nvarchar)",
+    "concepto (nvarchar)",
+    "monto_total (decimal)",
+    "id_forma_pago (int)",
+    "estado_gasto (nvarchar)",
+    "responsable_autoriza (nvarchar)",
+    "observaciones (nvarchar)",
+    "ruta_documento (nvarchar)",
+    "id_usuario_registro (int)",
+    "fecha_registro (datetime)"
+  ],
+  "inventario_obra": [
+    "id_obra (int)",
+    "id_material (int)",
+    "cantidad_actual (decimal)",
+    "costo_total_inventario (decimal)"
+  ],
+  "maquinaria": [
+    "id_maquinaria (int)",
+    "descripcion (nvarchar)",
+    "placa_identificacion (nvarchar)",
+    "id_tipo_maquinaria (int)",
+    "id_proveedor_alquiler (int)",
+    "tarifa_alquiler (decimal)",
+    "costo_hora_propia (decimal)",
+    "estado_operativo (nvarchar)"
+  ],
+  "materiales": [
+    "id_material (int)",
+    "codigo_material (nvarchar)",
+    "nombre_material (nvarchar)",
+    "id_unidad_medida (int)",
+    "categoria_material (nvarchar)",
+    "stock_minimo (decimal)",
+    "costo_promedio (decimal)"
+  ],
+  "movimientos_almacen": [
+    "id_movimiento (int)",
+    "id_obra (int)",
+    "id_material (int)",
+    "tipo_movimiento (nvarchar)",
+    "cantidad (decimal)",
+    "costo_unitario (decimal)",
+    "costo_total (decimal)",
+    "fecha_movimiento (datetime)",
+    "id_proveedor_origen (int)",
+    "id_partida_destino (int)",
+    "responsable_recibe (nvarchar)",
+    "motivo (nvarchar)",
+    "created_at (datetime)"
+  ],
+  "niveles_alerta": [
+    "id_nivel (int)",
+    "codigo (nvarchar)",
+    "nombre (nvarchar)",
+    "color_hex (nvarchar)"
+  ],
+  "obra_maquinaria": [
+    "id_uso (int)",
+    "id_obra (int)",
+    "id_maquinaria (int)",
+    "fecha_entrada (date)",
+    "fecha_salida (date)",
+    "horas_utilizadas (decimal)",
+    "operador_asignado (nvarchar)",
+    "costo_combustible (decimal)",
+    "costo_mantenimiento (decimal)",
+    "costo_total_uso (decimal)",
+    "observaciones (nvarchar)"
+  ],
+  "obras": [
+    "id_obra (int)",
+    "codigo_obra (nvarchar)",
+    "nombre_proyecto (nvarchar)",
+    "id_cliente (int)",
+    "direccion (nvarchar)",
+    "latitud (decimal)",
+    "longitud (decimal)",
+    "id_tipo_obra (int)",
+    "ingeniero_responsable (nvarchar)",
+    "arquitecto (nvarchar)",
+    "maestro_obra (nvarchar)",
+    "id_estado_obra (int)",
+    "numero_contrato (nvarchar)",
+    "monto_contrato (decimal)",
+    "fecha_inicio_contrato (date)",
+    "fecha_fin_contrato (date)",
+    "presupuesto_total (decimal)",
+    "fecha_inicio_real (date)",
+    "fecha_fin_estimada (date)",
+    "fecha_fin_real (date)",
+    "descripcion (nvarchar)",
+    "created_at (datetime)"
+  ],
+  "obras_personal": [
+    "id_obra (int)",
+    "id_trabajador (int)",
+    "fecha_ingreso (date)",
+    "fecha_salida (date)"
+  ],
+  "pagos_trabajador": [
+    "id_pago (int)",
+    "id_trabajador (int)",
+    "id_obra (int)",
+    "periodo_pago (nvarchar)",
+    "fecha_pago (date)",
+    "monto_bruto (decimal)",
+    "deducciones (decimal)",
+    "monto_neto (decimal)",
+    "estado (nvarchar)"
+  ],
+  "partidas_presupuestarias": [
+    "id_partida (int)",
+    "id_obra (int)",
+    "codigo_partida (nvarchar)",
+    "descripcion (nvarchar)",
+    "id_unidad_medida (int)",
+    "cantidad_estimada (decimal)",
+    "precio_unitario (decimal)",
+    "porcentaje_presupuesto (decimal)",
+    "umbral_alerta_presupuesto (decimal)"
+  ],
+  "proveedores": [
+    "id_proveedor (int)",
+    "razon_social (nvarchar)",
+    "ruc (nvarchar)",
+    "categoria (nvarchar)",
+    "contacto_nombre (nvarchar)",
+    "telefono (nvarchar)",
+    "correo (nvarchar)",
+    "direccion (nvarchar)",
+    "condiciones_pago (nvarchar)",
+    "evaluacion_desempeno (decimal)",
+    "activo (bit)"
+  ],
+  "roles": [
+    "id_rol (int)",
+    "nombre_rol (nvarchar)",
+    "descripcion (nvarchar)",
+    "permisos (nvarchar)"
+  ],
+  "tipos_contrato": [
+    "id_tipo_contrato (int)",
+    "codigo (nvarchar)",
+    "nombre (nvarchar)",
+    "descripcion (nvarchar)",
+    "activo (bit)"
+  ],
+  "tipos_maquinaria": [
+    "id_tipo_maquinaria (int)",
+    "codigo (nvarchar)",
+    "nombre (nvarchar)",
+    "descripcion (nvarchar)",
+    "activo (bit)"
+  ],
+  "tipos_obra": [
+    "id_tipo_obra (int)",
+    "codigo (nvarchar)",
+    "nombre (nvarchar)",
+    "descripcion (nvarchar)",
+    "activo (bit)"
+  ],
+  "trabajadores": [
+    "id_trabajador (int)",
+    "dni (nvarchar)",
+    "nombre_completo (nvarchar)",
+    "puesto (nvarchar)",
+    "especialidad (nvarchar)",
+    "id_tipo_contrato (int)",
+    "tarifa_hora (decimal)",
+    "telefono (nvarchar)",
+    "activo (bit)"
+  ],
+  "unidades_medida": [
+    "id_unidad (int)",
+    "codigo (nvarchar)",
+    "nombre (nvarchar)",
+    "activo (bit)"
+  ],
+  "usuarios": [
+    "id_usuario (int)",
+    "username (nvarchar)",
+    "password (nvarchar)",
+    "nombre_completo (nvarchar)",
+    "correo (nvarchar)",
+    "telefono (nvarchar)",
+    "id_rol (int)",
+    "activo (bit)",
+    "ultimo_acceso (datetime)",
+    "fecha_creacion (datetime)"
+  ],
+  "vista_cliente_alertas": [
+    "id_cliente (int)",
+    "razon_social (nvarchar)",
+    "id_usuario (int)",
+    "usuario_destino (nvarchar)",
+    "id_alerta (int)",
+    "tipo_alerta (nvarchar)",
+    "titulo (nvarchar)",
+    "mensaje (nvarchar)",
+    "nivel (nvarchar)",
+    "leida (bit)",
+    "fecha_creacion (datetime)",
+    "fecha_lectura (datetime)",
+    "obra (nvarchar)"
+  ],
+  "vista_cliente_avance": [
+    "id_cliente (int)",
+    "razon_social (nvarchar)",
+    "id_obra (int)",
+    "nombre_proyecto (nvarchar)",
+    "id_partida (int)",
+    "partida (nvarchar)",
+    "porcentaje_avance (decimal)",
+    "fecha_registro (date)",
+    "cantidad_ejecutada (decimal)",
+    "observaciones (nvarchar)"
+  ],
+  "vista_cliente_gastos": [
+    "id_cliente (int)",
+    "razon_social (nvarchar)",
+    "id_obra (int)",
+    "nombre_proyecto (nvarchar)",
+    "id_gasto (int)",
+    "fecha_gasto (date)",
+    "concepto (nvarchar)",
+    "monto_total (decimal)",
+    "estado_gasto (nvarchar)",
+    "numero_factura (nvarchar)",
+    "categoria (nvarchar)"
+  ],
+  "vista_cliente_proyectos": [
+    "id_cliente (int)",
+    "razon_social (nvarchar)",
+    "contacto_nombre (nvarchar)",
+    "id_obra (int)",
+    "codigo_obra (nvarchar)",
+    "nombre_proyecto (nvarchar)",
+    "direccion (nvarchar)",
+    "tipo_obra (nvarchar)",
+    "estado_obra (nvarchar)",
+    "presupuesto_total (decimal)",
+    "monto_contrato (decimal)",
+    "fecha_inicio_contrato (date)",
+    "fecha_fin_contrato (date)",
+    "ingeniero_responsable (nvarchar)"
+  ]
+}
