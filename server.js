@@ -1,16 +1,27 @@
 const express = require('express');
 const path = require('path');
-const sql = require('mssql/msnodesqlv8');
+const sql = require('mssql');
 const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Configuración de la base de datos (Azure SQL / Local)
-const config = {
-    driver: 'msnodesqlv8',
-    connectionString: process.env.DATABASE_URL || 'Driver={SQL Server};Server=localhost\\SQLEXPRESS;Database=BOB_CONSTRUYE;Trusted_Connection=Yes;'
+// Configuración compatible con Render y Windows
+let dbConfig = {
+    server: 'localhost',
+    database: 'BOB_CONSTRUYE',
+    options: {
+        encrypt: true,
+        trustServerCertificate: true
+    },
+    authentication: {
+        type: 'default',
+        options: { userName: '', password: '' }
+    }
 };
+
+// En Azure/Render usaremos una cadena de conexión simple
+const connectionString = process.env.DATABASE_URL;
 
 app.use(cors());
 app.use(express.json());
@@ -26,7 +37,7 @@ const bcrypt = require('bcrypt'); // Añadir al inicio de los endpoints
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
     try {
-        await sql.connect(config);
+        await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
             SELECT u.*, r.nombre_rol 
             FROM Seguridad.usuarios u
@@ -55,7 +66,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Obtener Obras (con progreso real)
 app.get('/api/obras', async (req, res) => {
     try {
-        await sql.connect(config);
+        await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
             SELECT 
                 o.*, 
@@ -77,7 +88,7 @@ app.get('/api/obras', async (req, res) => {
 app.post('/api/obras', async (req, res) => {
     const { codigo_obra, nombre_proyecto, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato } = req.body;
     try {
-        await sql.connect(config);
+        await sql.connect(connectionString || dbConfig);
         await sql.query`
             INSERT INTO Operaciones.obras (codigo_obra, nombre_proyecto, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato)
             VALUES (${codigo_obra}, ${nombre_proyecto}, ${id_cliente}, ${id_tipo_obra}, ${id_estado_obra}, ${monto_contrato})
@@ -92,7 +103,7 @@ app.post('/api/obras', async (req, res) => {
 app.post('/api/gastos', async (req, res) => {
     const { id_obra, fecha_gasto, numero_comprobante, proveedor, concepto, monto_total, id_forma_pago, id_estado_gasto } = req.body;
     try {
-        await sql.connect(config);
+        await sql.connect(connectionString || dbConfig);
         await sql.query`
             INSERT INTO Finanzas.gastos (id_obra, fecha_gasto, numero_comprobante, proveedor, concepto, monto_total, id_forma_pago, id_estado_gasto)
             VALUES (${id_obra}, ${fecha_gasto}, ${numero_comprobante}, ${proveedor}, ${concepto}, ${monto_total}, ${id_forma_pago}, ${id_estado_gasto})
@@ -106,7 +117,7 @@ app.post('/api/gastos', async (req, res) => {
 // Obtener Listado de Gastos
 app.get('/api/gastos', async (req, res) => {
     try {
-        await sql.connect(config);
+        await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
             SELECT 
                 g.*, 
@@ -125,7 +136,7 @@ app.get('/api/gastos', async (req, res) => {
 app.get('/api/obras/:id/presupuesto', async (req, res) => {
     const { id } = req.params;
     try {
-        await sql.connect(config);
+        await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
             SELECT 
                 p.*, 
