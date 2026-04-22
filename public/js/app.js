@@ -2,6 +2,9 @@
 // BOB CONSTRUYE V2 - CORE APPLICATION
 // ==========================================
 
+// Herramienta global de formato de moneda
+const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+
 document.addEventListener('DOMContentLoaded', () => {
     initApp();
 });
@@ -58,10 +61,7 @@ function initApp() {
     }
 
     // Botón Salir
-    // Utilidad para formatear moneda
-const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
-
-const btnLogout = document.getElementById('btnLogout');
+    const btnLogout = document.getElementById('btnLogout');
     if(btnLogout) {
         btnLogout.onclick = () => { location.reload(); };
     }
