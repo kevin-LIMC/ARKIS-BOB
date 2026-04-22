@@ -40,7 +40,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
                 ISNULL(SUM(monto_contrato), 0) as presupuesto_total,
                 ISNULL((SELECT SUM(monto_total) FROM Finanzas.gastos), 0) as gasto_total,
                 (SELECT COUNT(*) FROM Operaciones.obras) as total_obras,
-                (SELECT COUNT(*) FROM Auditoria.alertas WHERE leido = 0) as total_alertas
+                (SELECT COUNT(*) FROM Auditoria.alertas WHERE leida = 0) as total_alertas
             FROM Operaciones.obras
         `;
         res.json(stats.recordset[0]);
