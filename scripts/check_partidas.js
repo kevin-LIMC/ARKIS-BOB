@@ -8,9 +8,12 @@ const config = {
 async function check() {
     try {
         await sql.connect(config);
-        const tables = await sql.query("SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES");
-        console.log('--- All Tables ---');
-        tables.recordset.forEach(t => console.log(t.TABLE_SCHEMA + '.' + t.TABLE_NAME));
+        const cols = await sql.query("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='partidas_presupuestarias'");
+        console.log('--- Partidas ---');
+        console.log(cols.recordset);
+        const uni = await sql.query("SELECT * FROM Config.unidades_medida");
+        console.log('--- Unidades ---');
+        console.log(uni.recordset);
     } catch(e) { console.error('ERROR:', e.message); }
     process.exit(0);
 }

@@ -8,9 +8,13 @@ const config = {
 async function check() {
     try {
         await sql.connect(config);
-        const tables = await sql.query("SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES");
-        console.log('--- All Tables ---');
-        tables.recordset.forEach(t => console.log(t.TABLE_SCHEMA + '.' + t.TABLE_NAME));
+        const roles = await sql.query("SELECT * FROM Seguridad.roles");
+        console.log('--- Roles ---');
+        console.log(roles.recordset);
+        
+        const cols = await sql.query("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='Seguridad' AND TABLE_NAME='usuarios'");
+        console.log('--- Usuarios Schema ---');
+        console.log(cols.recordset);
     } catch(e) { console.error('ERROR:', e.message); }
     process.exit(0);
 }

@@ -8,9 +8,9 @@ const config = {
 async function check() {
     try {
         await sql.connect(config);
-        const tables = await sql.query("SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES");
-        console.log('--- All Tables ---');
-        tables.recordset.forEach(t => console.log(t.TABLE_SCHEMA + '.' + t.TABLE_NAME));
+        const cols = await sql.query("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='Finanzas' AND TABLE_NAME='gastos'");
+        console.log('=== COLUMNAS DE Finanzas.gastos ===');
+        cols.recordset.forEach(c => console.log(`- ${c.COLUMN_NAME} (${c.DATA_TYPE})`));
     } catch(e) { console.error('ERROR:', e.message); }
     process.exit(0);
 }

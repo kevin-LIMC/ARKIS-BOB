@@ -5,13 +5,12 @@ const config = {
     options: { encrypt: true, trustServerCertificate: false },
     authentication: { type: 'default', options: { userName: 'codificador', password: 'J4053k123' } }
 };
-async function check() {
+async function update() {
     try {
         await sql.connect(config);
-        const tables = await sql.query("SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES");
-        console.log('--- All Tables ---');
-        tables.recordset.forEach(t => console.log(t.TABLE_SCHEMA + '.' + t.TABLE_NAME));
+        await sql.query("UPDATE Finanzas.gastos SET id_partida = 1 WHERE id_obra = 1 AND id_partida IS NULL");
+        console.log('Update complete');
     } catch(e) { console.error('ERROR:', e.message); }
     process.exit(0);
 }
-check();
+update();

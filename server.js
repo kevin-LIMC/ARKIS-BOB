@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const sql = require('mssql');
@@ -8,15 +9,18 @@ const port = process.env.PORT || 3000;
 
 // Configuración compatible con Render y Windows
 let dbConfig = {
-    server: 'localhost',
-    database: 'BOB_CONSTRUYE',
+    server: process.env.DB_SERVER,
+    database: process.env.DB_NAME,
     options: {
         encrypt: true,
-        trustServerCertificate: true
+        trustServerCertificate: false
     },
     authentication: {
         type: 'default',
-        options: { userName: '', password: '' }
+        options: { 
+            userName: process.env.DB_USER, 
+            password: process.env.DB_PASS 
+        }
     }
 };
 
@@ -49,6 +53,41 @@ app.get('/api/dashboard/stats', async (req, res) => {
     }
 });
 
+// Obtener Datos para Gráficas del Dashboard
+app.get('/api/dashboard/charts', async (req, res) => {
+    try {
+        await sql.connect(connectionString || dbConfig);
+        
+        // Gastos por Mes
+        const gastosMes = await sql.query`
+            SELECT 
+                FORMAT(fecha_gasto, 'yyyy-MM') as mes,
+                SUM(monto_total) as total
+            FROM Finanzas.gastos
+            GROUP BY FORMAT(fecha_gasto, 'yyyy-MM')
+            ORDER BY mes ASC
+        `;
+        
+        // Presupuesto por Obra
+        const presObra = await sql.query`
+            SELECT 
+                o.codigo_obra as obra,
+                ISNULL(SUM(p.cantidad_estimada * p.precio_unitario), 0) as total
+            FROM Operaciones.obras o
+            LEFT JOIN Operaciones.partidas_presupuestarias p ON o.id_obra = p.id_obra
+            GROUP BY o.codigo_obra
+            HAVING SUM(p.cantidad_estimada * p.precio_unitario) > 0
+        `;
+        
+        res.json({
+            gastos: gastosMes.recordset,
+            presupuesto: presObra.recordset
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 const bcrypt = require('bcrypt'); // Añadir al inicio de los endpoints
 
 // Login real
@@ -57,7 +96,7 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
-            SELECT u.*, r.nombre_rol 
+            SELECT u.*, r.nombre_rol, r.permisos 
             FROM Seguridad.usuarios u
             JOIN Seguridad.roles r ON u.id_rol = r.id_rol
             WHERE u.username = ${username}
@@ -122,14 +161,74 @@ app.post('/api/obras', async (req, res) => {
     }
 });
 
-// Registrar Nuevo Gasto
-app.post('/api/gastos', async (req, res) => {
-    const { id_obra, fecha_gasto, numero_comprobante, proveedor, concepto, monto_total, id_forma_pago, id_estado_gasto } = req.body;
+// Obtener una Obra por ID
+app.get('/api/obras/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        const result = await sql.query`SELECT * FROM Operaciones.obras WHERE id_obra = ${id}`;
+        res.json(result.recordset[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actualizar Obra
+app.put('/api/obras/:id', async (req, res) => {
+    const { id } = req.params;
+    const { codigo_obra, nombre_proyecto, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato } = req.body;
     try {
         await sql.connect(connectionString || dbConfig);
         await sql.query`
-            INSERT INTO Finanzas.gastos (id_obra, fecha_gasto, numero_comprobante, proveedor, concepto, monto_total, id_forma_pago, id_estado_gasto)
-            VALUES (${id_obra}, ${fecha_gasto}, ${numero_comprobante}, ${proveedor}, ${concepto}, ${monto_total}, ${id_forma_pago}, ${id_estado_gasto})
+            UPDATE Operaciones.obras 
+            SET codigo_obra = ${codigo_obra}, 
+                nombre_proyecto = ${nombre_proyecto}, 
+                id_cliente = ${id_cliente}, 
+                id_tipo_obra = ${id_tipo_obra}, 
+                id_estado_obra = ${id_estado_obra}, 
+                monto_contrato = ${monto_contrato}
+            WHERE id_obra = ${id}
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Registrar Nuevo Gasto
+app.post('/api/gastos', async (req, res) => {
+    const { id_obra, id_partida, fecha_gasto, numero_factura, id_proveedor, concepto, monto_total, id_forma_pago, estado_gasto } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            INSERT INTO Finanzas.gastos (id_obra, id_partida, fecha_gasto, numero_factura, id_proveedor, concepto, monto_total, id_forma_pago, estado_gasto)
+            VALUES (${id_obra}, ${id_partida ? id_partida : null}, ${fecha_gasto}, ${numero_factura}, ${id_proveedor}, ${concepto}, ${monto_total}, ${id_forma_pago}, ${estado_gasto})
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error insertando gasto:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actualizar Gasto
+app.put('/api/gastos/:id', async (req, res) => {
+    const { id } = req.params;
+    const { id_obra, id_partida, fecha_gasto, numero_factura, id_proveedor, concepto, monto_total, id_forma_pago, estado_gasto } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            UPDATE Finanzas.gastos
+            SET id_obra = ${id_obra},
+                id_partida = ${id_partida ? id_partida : null},
+                fecha_gasto = ${fecha_gasto},
+                numero_factura = ${numero_factura},
+                id_proveedor = ${id_proveedor},
+                concepto = ${concepto},
+                monto_total = ${monto_total},
+                id_forma_pago = ${id_forma_pago},
+                estado_gasto = ${estado_gasto}
+            WHERE id_gasto = ${id}
         `;
         res.json({ success: true });
     } catch (err) {
@@ -144,9 +243,11 @@ app.get('/api/gastos', async (req, res) => {
         const result = await sql.query`
             SELECT 
                 g.*, 
-                o.nombre_proyecto as obra_nombre
+                o.nombre_proyecto as obra_nombre,
+                p.razon_social as proveedor_nombre
             FROM Finanzas.gastos g
             LEFT JOIN Operaciones.obras o ON g.id_obra = o.id_obra
+            LEFT JOIN Finanzas.proveedores p ON g.id_proveedor = p.id_proveedor
             ORDER BY g.fecha_gasto DESC
         `;
         res.json(result.recordset);
@@ -164,7 +265,7 @@ app.get('/api/obras/:id/presupuesto', async (req, res) => {
             SELECT 
                 p.*, 
                 u.nombre as unidad_nombre,
-                ISNULL((SELECT SUM(monto_total) FROM Finanzas.gastos WHERE id_obra = p.id_obra AND concepto LIKE '%' + p.descripcion + '%'), 0) as gastado_real
+                ISNULL((SELECT SUM(monto_total) FROM Finanzas.gastos WHERE id_partida = p.id_partida), 0) as gastado_real
             FROM Operaciones.partidas_presupuestarias p
             LEFT JOIN Config.unidades_medida u ON p.id_unidad_medida = u.id_unidad
             WHERE p.id_obra = ${id}
@@ -172,6 +273,34 @@ app.get('/api/obras/:id/presupuesto', async (req, res) => {
         `;
         res.json(result.recordset);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Obtener Unidades de Medida
+app.get('/api/unidades', async (req, res) => {
+    try {
+        await sql.connect(connectionString || dbConfig);
+        const result = await sql.query`SELECT * FROM Config.unidades_medida WHERE activo = 1 ORDER BY nombre`;
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Registrar Nueva Partida Presupuestaria
+app.post('/api/partidas', async (req, res) => {
+    const { id_obra, codigo_partida, descripcion, id_unidad_medida, cantidad_estimada, precio_unitario } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            INSERT INTO Operaciones.partidas_presupuestarias 
+            (id_obra, codigo_partida, descripcion, id_unidad_medida, cantidad_estimada, precio_unitario, umbral_alerta_presupuesto)
+            VALUES (${id_obra}, ${codigo_partida}, ${descripcion}, ${id_unidad_medida}, ${cantidad_estimada}, ${precio_unitario}, 80)
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error insertando partida:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -208,6 +337,28 @@ app.post('/api/personal', async (req, res) => {
     }
 });
 
+// Actualizar Personal
+app.put('/api/personal/:id', async (req, res) => {
+    const { id } = req.params;
+    const { dni, nombre_completo, puesto, especialidad, tarifa_hora, telefono } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            UPDATE Operaciones.trabajadores
+            SET dni = ${dni},
+                nombre_completo = ${nombre_completo},
+                puesto = ${puesto},
+                especialidad = ${especialidad},
+                tarifa_hora = ${tarifa_hora},
+                telefono = ${telefono}
+            WHERE id_trabajador = ${id}
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- MÓDULO DE INVENTARIO ---
 
 // Obtener Materiales
@@ -225,6 +376,42 @@ app.get('/api/inventario/materiales', async (req, res) => {
     }
 });
 
+// Registrar Nuevo Material
+app.post('/api/inventario/materiales', async (req, res) => {
+    const { codigo_material, nombre_material, categoria_material, stock_minimo, costo_promedio } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            INSERT INTO Almacen.materiales (codigo_material, nombre_material, categoria_material, stock_minimo, costo_promedio, id_unidad_medida, stock_actual)
+            VALUES (${codigo_material}, ${nombre_material}, ${categoria_material}, ${stock_minimo}, ${costo_promedio}, 1, 0)
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actualizar Material
+app.put('/api/inventario/materiales/:id', async (req, res) => {
+    const { id } = req.params;
+    const { codigo_material, nombre_material, categoria_material, stock_minimo, costo_promedio } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            UPDATE Almacen.materiales
+            SET codigo_material = ${codigo_material},
+                nombre_material = ${nombre_material},
+                categoria_material = ${categoria_material},
+                stock_minimo = ${stock_minimo},
+                costo_promedio = ${costo_promedio}
+            WHERE id_material = ${id}
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Obtener Maquinaria
 app.get('/api/inventario/maquinaria', async (req, res) => {
     try {
@@ -235,6 +422,41 @@ app.get('/api/inventario/maquinaria', async (req, res) => {
             ORDER BY descripcion ASC
         `;
         res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Registrar Nueva Maquinaria
+app.post('/api/inventario/maquinaria', async (req, res) => {
+    const { descripcion, placa_identificacion, tarifa_alquiler, estado_operativo } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            INSERT INTO Equipos.maquinaria (descripcion, placa_identificacion, tarifa_alquiler, estado_operativo)
+            VALUES (${descripcion}, ${placa_identificacion}, ${tarifa_alquiler}, ${estado_operativo})
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actualizar Maquinaria
+app.put('/api/inventario/maquinaria/:id', async (req, res) => {
+    const { id } = req.params;
+    const { descripcion, placa_identificacion, tarifa_alquiler, estado_operativo } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            UPDATE Equipos.maquinaria
+            SET descripcion = ${descripcion},
+                placa_identificacion = ${placa_identificacion},
+                tarifa_alquiler = ${tarifa_alquiler},
+                estado_operativo = ${estado_operativo}
+            WHERE id_maquinaria = ${id}
+        `;
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -260,17 +482,152 @@ app.get('/api/alertas', async (req, res) => {
 
 // --- MÓDULO DE USUARIOS ---
 
+// Obtener Lista de Roles
+app.get('/api/roles', async (req, res) => {
+    try {
+        await sql.connect(connectionString || dbConfig);
+        const result = await sql.query`
+            SELECT id_rol, nombre_rol, descripcion
+            FROM Seguridad.roles
+            ORDER BY nombre_rol ASC
+        `;
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Obtener Lista de Usuarios
 app.get('/api/usuarios', async (req, res) => {
     try {
         await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
-            SELECT u.id_usuario, u.username, u.nombre_completo, u.correo, r.nombre_rol, u.activo
+            SELECT u.id_usuario, u.username, u.nombre_completo, u.correo, r.nombre_rol, u.activo, u.id_rol
             FROM Seguridad.usuarios u
             JOIN Seguridad.roles r ON u.id_rol = r.id_rol
             ORDER BY u.id_usuario ASC
         `;
         res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Registrar Nuevo Usuario (solo Adminstradores)
+app.post('/api/usuarios', async (req, res) => {
+    const { username, password, nombre_completo, correo, id_rol } = req.body;
+    
+    try {
+        // Validar datos requeridos
+        if (!username || !password || !nombre_completo || !correo || !id_rol) {
+            return res.status(400).json({ error: 'Faltan campos requeridos' });
+        }
+
+        // Generar hash de la contraseña con bcrypt
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        await sql.connect(connectionString || dbConfig);
+        
+        // Verificar si el username ya existe
+        const existente = await sql.query`
+            SELECT id_usuario FROM Seguridad.usuarios WHERE username = ${username}
+        `;
+        
+        if (existente.recordset.length > 0) {
+            return res.status(409).json({ error: 'El nombre de usuario ya existe' });
+        }
+
+        // Insertar el nuevo usuario
+        await sql.query`
+            INSERT INTO Seguridad.usuarios (username, password, nombre_completo, correo, id_rol, activo, fecha_creacion)
+            VALUES (${username}, ${hashedPassword}, ${nombre_completo}, ${correo}, ${id_rol}, 1, GETDATE())
+        `;
+
+        res.json({ success: true, message: 'Usuario registrado exitosamente' });
+    } catch (err) {
+        console.error('Error registrando usuario:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Desactivar Usuario (cambiar estado a inactivo)
+app.put('/api/usuarios/:id/estado', async (req, res) => {
+    const { id } = req.params;
+    const { activo } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`UPDATE Seguridad.usuarios SET activo = ${activo} WHERE id_usuario = ${id}`;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- MÓDULO DE PROVEEDORES ---
+
+// Obtener Lista de Proveedores
+app.get('/api/proveedores', async (req, res) => {
+    try {
+        await sql.connect(connectionString || dbConfig);
+        const result = await sql.query`
+            SELECT id_proveedor, razon_social, ruc, categoria, contacto_nombre, telefono, correo, direccion, condiciones_pago, evaluacion_desempeno, activo
+            FROM Finanzas.proveedores
+            ORDER BY razon_social ASC
+        `;
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Crear Nuevo Proveedor
+app.post('/api/proveedores', async (req, res) => {
+    const { razon_social, ruc, categoria, contacto_nombre, telefono, correo, direccion, condiciones_pago } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            INSERT INTO Finanzas.proveedores (razon_social, ruc, categoria, contacto_nombre, telefono, correo, direccion, condiciones_pago, evaluacion_desempeno, activo)
+            VALUES (${razon_social}, ${ruc}, ${categoria}, ${contacto_nombre}, ${telefono}, ${correo}, ${direccion}, ${condiciones_pago}, 5.0, 1)
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actualizar Proveedor
+app.put('/api/proveedores/:id', async (req, res) => {
+    const { id } = req.params;
+    const { razon_social, ruc, categoria, contacto_nombre, telefono, correo, direccion, condiciones_pago } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            UPDATE Finanzas.proveedores
+            SET razon_social = ${razon_social},
+                ruc = ${ruc},
+                categoria = ${categoria},
+                contacto_nombre = ${contacto_nombre},
+                telefono = ${telefono},
+                correo = ${correo},
+                direccion = ${direccion},
+                condiciones_pago = ${condiciones_pago}
+            WHERE id_proveedor = ${id}
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actualizar estado activo/inactivo del proveedor
+app.put('/api/proveedores/:id/estado', async (req, res) => {
+    const { id } = req.params;
+    const { activo } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`UPDATE Finanzas.proveedores SET activo = ${activo} WHERE id_proveedor = ${id}`;
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
