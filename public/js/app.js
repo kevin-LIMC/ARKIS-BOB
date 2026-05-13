@@ -40,6 +40,61 @@ function initApp() {
         });
     }
 
+    // Manejo de Registro
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) {
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nombre_completo = document.getElementById('reg_nombre').value;
+            const username = document.getElementById('reg_user').value;
+            const correo = document.getElementById('reg_email').value;
+            const password = document.getElementById('reg_pass').value;
+
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre_completo, username, correo, password })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    alert('✓ Cuenta creada exitosamente. Ya puede iniciar sesión.');
+                    // Cambiar a login
+                    registerForm.classList.add('hidden');
+                    document.getElementById('loginForm').classList.remove('hidden');
+                    document.getElementById('username').value = username;
+                } else {
+                    alert(result.error || 'Error al registrarse');
+                }
+            } catch (error) {
+                alert('Error de conexión con el servidor');
+            }
+        });
+    }
+
+    // Toggles entre Login y Registro
+    const linkGoReg = document.getElementById('linkGoRegister');
+    const linkGoLog = document.getElementById('linkGoLogin');
+    
+    if (linkGoReg) {
+        linkGoReg.onclick = (e) => {
+            e.preventDefault();
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+            document.querySelector('.login-card p').textContent = 'Cree su cuenta de cliente';
+        };
+    }
+    
+    if (linkGoLog) {
+        linkGoLog.onclick = (e) => {
+            e.preventDefault();
+            document.getElementById('registerForm').classList.add('hidden');
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.querySelector('.login-card p').textContent = 'Ingrese sus credenciales';
+        };
+    }
+
     // Manejo de Menú Lateral
     document.querySelectorAll('.menu-item').forEach(item => {
         item.addEventListener('click', (e) => {
@@ -69,19 +124,29 @@ function initApp() {
 }
 
 function aplicarPermisos() {
-    if (!usuarioActual || !usuarioActual.permisos) return;
-
+    if (!usuarioActual) return;
     const permisos = usuarioActual.permisos;
-    
+    const esAdmin = permisos === '*';
+
     document.querySelectorAll('.menu-item').forEach(item => {
         const page = item.getAttribute('data-page');
-        if (!page) return; // Saltamos botones como logout (que no tienen data-page)
-
-        if (permisos === '*' || permisos.split(',').includes(page)) {
+        
+        // Si el botón no tiene data-page (como el logout), siempre es visible
+        if (!page) {
             item.classList.remove('hidden');
-        } else {
-            item.classList.add('hidden');
+            return;
         }
+
+        // Lógica de visibilidad para páginas específicas
+        let visible = false;
+        if (esAdmin) {
+            visible = !['catalogo', 'mis_reservas'].includes(page);
+        } else {
+            visible = permisos.split(',').includes(page);
+        }
+
+        if (visible) item.classList.remove('hidden');
+        else item.classList.add('hidden');
     });
 }
 
@@ -157,6 +222,21 @@ async function navegarA(pagina) {
             title.textContent = 'Gestión de Accesos';
             subtitle.textContent = 'Configuración de usuarios y roles';
             renderUsuarios();
+            break;
+        case 'catalogo':
+            title.textContent = 'Catálogo de Materiales';
+            subtitle.textContent = 'Explore y reserve los materiales disponibles';
+            renderCatalogo();
+            break;
+        case 'mis_reservas':
+            title.textContent = 'Mis Reservas';
+            subtitle.textContent = 'Historial de sus solicitudes y pedidos';
+            renderMisReservas();
+            break;
+        case 'pedidos':
+            title.textContent = 'Gestión de Pedidos';
+            subtitle.textContent = 'Administre las solicitudes de los clientes';
+            renderPedidosAdmin();
             break;
         default:
             area.innerHTML = `<h3>Sección ${pagina} en construcción</h3>`;
@@ -248,6 +328,7 @@ function renderGastos() {
 
     fetch('/api/gastos').then(r => r.json()).then(gastos => {
         const tbody = document.getElementById('listaGastos');
+        if(!tbody) return;
         if (gastos.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">No hay gastos registrados</td></tr>';
             return;
@@ -289,6 +370,7 @@ function renderPresupuesto() {
     
     fetch('/api/obras').then(r => r.json()).then(obras => {
         const sel = document.getElementById('selectObraPres');
+        if (!sel) return; // Protección contra errores si el usuario cambió de página
         obras.forEach(o => {
             const opt = document.createElement('option');
             opt.value = o.id_obra; opt.textContent = o.nombre_proyecto;
@@ -397,6 +479,66 @@ function mostrarFormPartida(idObra) {
             cargarPresupuesto(idObra);
         } else {
             showToast('Error al registrar partida', 'error');
+        }
+    };
+}
+
+window.prepararEdicionProveedor = (index) => {
+    const prov = window._proveedoresCache[index];
+    mostrarFormProveedor(prov);
+};
+
+function mostrarFormProveedor(prov = null) {
+    const isEdit = prov !== null;
+    const html = `
+        <form id="formProveedor">
+            <div class="form-group-modal"><label>RUC / ID</label><input type="text" id="fpr_ruc" required value="${isEdit ? prov.ruc : ''}"></div>
+            <div class="form-group-modal"><label>Razón Social</label><input type="text" id="fpr_nom" required value="${isEdit ? prov.razon_social : ''}"></div>
+            <div class="form-group-modal"><label>Dirección</label><input type="text" id="fpr_dir" value="${isEdit ? prov.direccion : ''}"></div>
+            <div class="form-group-modal"><label>Contacto</label><input type="text" id="fpr_con" value="${isEdit ? prov.contacto : ''}"></div>
+            <div class="form-group-modal"><label>Teléfono</label><input type="text" id="fpr_tel" value="${isEdit ? prov.telefono : ''}"></div>
+            <div class="form-group-modal"><label>Categoría</label>
+                <select id="fpr_cat">
+                    <option ${isEdit && prov.categoria_proveedor === 'Materiales' ? 'selected' : ''}>Materiales</option>
+                    <option ${isEdit && prov.categoria_proveedor === 'Servicios' ? 'selected' : ''}>Servicios</option>
+                    <option ${isEdit && prov.categoria_proveedor === 'Maquinaria' ? 'selected' : ''}>Maquinaria</option>
+                    <option ${isEdit && prov.categoria_proveedor === 'Otros' ? 'selected' : ''}>Otros</option>
+                </select>
+            </div>
+            <button class="btn btn-primary btn-block">${isEdit ? 'Actualizar' : 'Registrar'} Proveedor</button>
+        </form>
+    `;
+    abrirModal(isEdit ? 'Editar Proveedor' : 'Nuevo Proveedor', html);
+
+    document.getElementById('formProveedor').onsubmit = async (e) => {
+        e.preventDefault();
+        const data = {
+            ruc: document.getElementById('fpr_ruc').value,
+            razon_social: document.getElementById('fpr_nom').value,
+            direccion: document.getElementById('fpr_dir').value,
+            contacto: document.getElementById('fpr_con').value,
+            telefono: document.getElementById('fpr_tel').value,
+            categoria_proveedor: document.getElementById('fpr_cat').value
+        };
+
+        const method = isEdit ? 'PUT' : 'POST';
+        const url = isEdit ? `/api/proveedores/${prov.id_proveedor}` : '/api/proveedores';
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if(res.ok) {
+                document.getElementById('modalContainer').classList.add('hidden');
+                showToast(isEdit ? 'Proveedor actualizado' : 'Proveedor registrado');
+                renderProveedores();
+            } else {
+                showToast('Error al guardar proveedor', 'error');
+            }
+        } catch (err) {
+            showToast('Error de conexión', 'error');
         }
     };
 }
@@ -806,26 +948,56 @@ function renderInventario() {
 
     const tabMat = document.getElementById('tabMat');
     const tabMaq = document.getElementById('tabMaq');
+    const btnNuevo = document.getElementById('btnNuevoInv');
+
+    if (btnNuevo) {
+        btnNuevo.onclick = () => mostrarFormMaterial(null);
+    }
 
     const cargarMateriales = () => {
+        const tbody = document.getElementById('bodyInv');
+        if (!tbody) return;
+
         tabMat.classList.add('active'); tabMaq.classList.remove('active');
         document.getElementById('headInv').innerHTML = '<tr><th>Código</th><th>Material</th><th>Categoría</th><th>Stock Mín.</th><th>Costo Prom.</th><th>Acciones</th></tr>';
-        fetch('/api/inventario/materiales').then(r => r.json()).then(data => {
-            const tbody = document.getElementById('bodyInv');
-            if(data.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No hay materiales registrados</td></tr>'; return; }
-            tbody.innerHTML = data.map(m => `
-                <tr>
-                    <td>${m.codigo_material}</td>
-                    <td><strong>${m.nombre_material}</strong></td>
-                    <td>${m.categoria_material}</td>
-                    <td>${m.stock_minimo}</td>
-                    <td>${fmt.format(m.costo_promedio)}</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline" onclick='mostrarFormMaterial(${JSON.stringify(m)})'><i class="fas fa-edit"></i></button>
-                    </td>
-                </tr>
-            `).join('');
-        });
+        
+        fetch('/api/inventario/materiales')
+            .then(r => r.json())
+            .then(data => {
+                if(!tbody) return; 
+                if(data.length === 0) { 
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No hay materiales registrados</td></tr>'; 
+                    return; 
+                }
+                
+                // Guardamos los materiales en una variable global temporal para acceder a ellos sin romper el HTML
+                window._materialesCache = data;
+
+                tbody.innerHTML = data.map((m, index) => `
+                    <tr>
+                        <td>${m.codigo_material}</td>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <img src="${m.imagen_url || 'https://via.placeholder.com/40'}" style="width:40px; height:40px; border-radius:4px; object-fit:cover;">
+                                <strong>${m.nombre_material}</strong>
+                            </div>
+                        </td>
+                        <td>${m.categoria_material}</td>
+                        <td>${m.stock_minimo}</td>
+                        <td>${fmt.format(m.costo_promedio)}</td>
+                        <td>
+                            <button class="btn-icon" onclick="prepararEdicionMaterial(${index})">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            });
+    };
+
+    window.prepararEdicionMaterial = (index) => {
+        const material = window._materialesCache[index];
+        mostrarFormMaterial(material);
     };
 
     const cargarMaquinaria = () => {
@@ -864,46 +1036,71 @@ function renderInventario() {
 }
 
 function mostrarFormMaterial(material = null) {
-    const isEdit = material !== null;
+    const isEdit = !!material;
     const html = `
         <form id="formMaterial">
-            <div class="form-group-modal"><label>Código</label><input type="text" id="fm_cod" required placeholder="Ej: MAT-001" value="${isEdit ? material.codigo_material : ''}"></div>
-            <div class="form-group-modal"><label>Nombre del Material</label><input type="text" id="fm_nom" required value="${isEdit ? material.nombre_material : ''}"></div>
-            <div class="form-group-modal"><label>Categoría</label>
-                <select id="fm_cat">
-                    <option ${isEdit && material.categoria_material === 'Agregados' ? 'selected' : ''}>Agregados</option>
-                    <option ${isEdit && material.categoria_material === 'Aceros' ? 'selected' : ''}>Aceros</option>
-                    <option ${isEdit && material.categoria_material === 'Cementos' ? 'selected' : ''}>Cementos</option>
-                    <option ${isEdit && material.categoria_material === 'Acabados' ? 'selected' : ''}>Acabados</option>
-                    <option ${isEdit && material.categoria_material === 'Eléctricos' ? 'selected' : ''}>Eléctricos</option>
-                    <option ${isEdit && material.categoria_material === 'Sanitarios' ? 'selected' : ''}>Sanitarios</option>
-                    <option ${isEdit && material.categoria_material === 'Otros' ? 'selected' : ''}>Otros</option>
-                </select>
+            <div class="form-row">
+                <div class="form-group-modal"><label>Código</label><input type="text" name="codigo_material" required value="${isEdit ? material.codigo_material : ''}"></div>
+                <div class="form-group-modal"><label>Categoría</label>
+                    <select name="categoria_material">
+                        <option ${isEdit && material.categoria_material === 'Agregados' ? 'selected' : ''}>Agregados</option>
+                        <option ${isEdit && material.categoria_material === 'Aceros' ? 'selected' : ''}>Aceros</option>
+                        <option ${isEdit && material.categoria_material === 'Cementos' ? 'selected' : ''}>Cementos</option>
+                        <option ${isEdit && material.categoria_material === 'Acabados' ? 'selected' : ''}>Acabados</option>
+                        <option ${isEdit && material.categoria_material === 'Eléctricos' ? 'selected' : ''}>Eléctricos</option>
+                        <option ${isEdit && material.categoria_material === 'Sanitarios' ? 'selected' : ''}>Sanitarios</option>
+                        <option ${isEdit && material.categoria_material === 'Otros' ? 'selected' : ''}>Otros</option>
+                    </select>
+                </div>
             </div>
-            <div class="form-group-modal"><label>Stock Mínimo</label><input type="number" id="fm_min" required step="0.01" value="${isEdit ? material.stock_minimo : ''}"></div>
-            <div class="form-group-modal"><label>Costo Unitario (S/.)</label><input type="number" id="fm_cos" required step="0.01" value="${isEdit ? material.costo_promedio : ''}"></div>
-            <button class="btn btn-primary btn-block">${isEdit ? 'Actualizar' : 'Registrar'} Material</button>
+            <div class="form-group-modal"><label>Nombre del Material</label><input type="text" name="nombre_material" required value="${isEdit ? material.nombre_material : ''}"></div>
+            
+            <div class="form-row">
+                <div class="form-group-modal"><label>Costo Unitario (S/.)</label><input type="number" name="costo_promedio" required step="0.01" value="${isEdit ? (material.costo_promedio || 0) : ''}"></div>
+                <div class="form-group-modal"><label>Precio Venta (S/.)</label><input type="number" name="precio_venta" required step="0.01" value="${isEdit ? (material.precio_venta || 0) : ''}"></div>
+            </div>
+            
+            <div class="form-group-modal"><label>Stock Mínimo</label><input type="number" name="stock_minimo" required step="1" value="${isEdit ? (material.stock_minimo || 0) : ''}"></div>
+            
+            <div class="form-group-modal">
+                <label>Foto del Material</label>
+                <input type="file" name="imagen" accept="image/*">
+                ${isEdit && material.imagen_url ? `<small style="display:block; margin-top:5px;">Imagen actual: ${material.imagen_url}</small>` : ''}
+                <input type="hidden" name="imagen_url" value="${isEdit ? (material.imagen_url || '') : ''}">
+            </div>
+            
+            <button class="btn btn-primary btn-block" type="submit">${isEdit ? 'Actualizar' : 'Registrar'} Material</button>
         </form>
     `;
     abrirModal(isEdit ? 'Editar Material' : 'Nuevo Material en Almacén', html);
+
     document.getElementById('formMaterial').onsubmit = async (e) => {
         e.preventDefault();
-        const data = {
-            codigo_material: document.getElementById('fm_cod').value,
-            nombre_material: document.getElementById('fm_nom').value,
-            categoria_material: document.getElementById('fm_cat').value,
-            stock_minimo: document.getElementById('fm_min').value,
-            costo_promedio: document.getElementById('fm_cos').value
-        };
+        const formData = new FormData(e.target);
+        
+        // FORZAMOS LA RUTA SEGÚN SI RECIBIMOS UN OBJETO MATERIAL O NO
+        let url = '/api/inventario/materiales';
+        let method = 'POST';
 
-        const url = isEdit ? `/api/inventario/materiales/${material.id_material}` : '/api/inventario/materiales';
-        const method = isEdit ? 'PUT' : 'POST';
+        if (isEdit && material.id_material) {
+            url = `/api/inventario/materiales/${material.id_material}`;
+            method = 'PUT';
+        }
 
-        const res = await fetch(url, { method: method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)});
-        if(res.ok) {
-            document.getElementById('modalContainer').classList.add('hidden');
-            showToast(isEdit ? 'Material actualizado' : 'Material registrado');
-            renderInventario();
+        console.log(`[CLIENTE] Accion: ${method}, URL: ${url}`);
+
+        try {
+            const res = await fetch(url, { method, body: formData });
+            if(res.ok) {
+                document.getElementById('modalContainer').classList.add('hidden');
+                showToast(isEdit ? 'Material actualizado' : 'Material registrado');
+                renderInventario();
+            } else {
+                const err = await res.json();
+                showToast(err.error || 'Error al guardar', 'error');
+            }
+        } catch (err) {
+            showToast('Error de conexión', 'error');
         }
     };
 }
@@ -966,6 +1163,7 @@ function renderPersonal() {
 
     fetch('/api/personal').then(r => r.json()).then(empleados => {
         const tbody = document.getElementById('listaPersonal');
+        if(!tbody) return; // Protección
         if(empleados.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No hay personal registrado</td></tr>';
             return;
@@ -1042,179 +1240,142 @@ function renderProveedores() {
             <table>
                 <thead>
                     <tr>
+                        <th>RUC</th>
                         <th>Razón Social</th>
-                        <th>RUC / RFC</th>
                         <th>Categoría</th>
-                        <th>Contacto</th>
                         <th>Teléfono</th>
-                        <th>Correo</th>
-                        <th>Cond. Pago</th>
-                        <th>Evaluación</th>
-                        <th>Estado</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
-                <tbody id="listaProveedores"><tr><td colspan="10" style="text-align:center">Cargando...</td></tr></tbody>
+                <tbody id="listaProveedores"><tr><td colspan="5" style="text-align:center">Cargando...</td></tr></tbody>
             </table>
         </div>
     `;
 
-    document.getElementById('btnNuevoProveedor').onclick = mostrarFormProveedor;
+    document.getElementById('btnNuevoProveedor').onclick = () => mostrarFormProveedor(null);
 
-    let todosProveedores = [];
+    fetch('/api/proveedores').then(r => r.json()).then(provs => {
+        const tbody = document.getElementById('listaProveedores');
+        if(!tbody) return; 
+        if(provs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">No hay proveedores registrados</td></tr>';
+            return;
+        }
+        
+        window._proveedoresCache = provs;
 
-    const cargar = () => {
-        fetch('/api/proveedores').then(r => r.json()).then(data => {
-            todosProveedores = data;
-            renderTablaProveedores(data);
-        });
-    };
-
-    document.getElementById('buscarProveedor').oninput = (e) => {
-        const q = e.target.value.toLowerCase();
-        const filtrados = todosProveedores.filter(p =>
-            p.razon_social.toLowerCase().includes(q) ||
-            (p.categoria || '').toLowerCase().includes(q) ||
-            (p.ruc || '').toLowerCase().includes(q)
-        );
-        renderTablaProveedores(filtrados);
-    };
-
-    cargar();
-}
-
-function renderTablaProveedores(data) {
-    const tbody = document.getElementById('listaProveedores');
-    if (!tbody) return;
-    if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px;">No se encontraron proveedores</td></tr>';
-        return;
-    }
-    tbody.innerHTML = data.map(p => {
-        const estrellas = '★'.repeat(Math.round(p.evaluacion_desempeno || 0)) + '☆'.repeat(5 - Math.round(p.evaluacion_desempeno || 0));
-        const estadoBadge = p.activo
-            ? '<span style="background:#d4edda; color:#155724; padding:3px 10px; border-radius:12px; font-size:12px;">● Activo</span>'
-            : '<span style="background:#f8d7da; color:#721c24; padding:3px 10px; border-radius:12px; font-size:12px;">● Inactivo</span>';
-        return `
+        tbody.innerHTML = provs.map((p, index) => `
             <tr>
+                <td>${p.ruc}</td>
                 <td><strong>${p.razon_social}</strong></td>
-                <td>${p.ruc || '-'}</td>
-                <td><span style="background:#e8f0fe; color:#1a2b4b; padding:3px 10px; border-radius:12px; font-size:12px;">${p.categoria || 'General'}</span></td>
-                <td>${p.contacto_nombre || '-'}</td>
-                <td>${p.telefono || '-'}</td>
-                <td>${p.correo || '-'}</td>
-                <td>${p.condiciones_pago || '-'}</td>
-                <td style="color:#f39c12; font-size:14px;" title="${p.evaluacion_desempeno}/5">${estrellas}</td>
+                <td>${p.categoria_proveedor || 'General'}</td>
+                <td>${p.telefono}</td>
                 <td>
-                    ${estadoBadge}
-                    <button onclick="toggleProveedor(${p.id_proveedor}, ${!p.activo})" style="margin-left:6px; background:none; border:1px solid #ccc; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:11px;">
-                        ${p.activo ? 'Desactivar' : 'Activar'}
+                    <button class="btn-icon" onclick="prepararEdicionProveedor(${index})">
+                        <i class="fas fa-edit"></i>
                     </button>
                 </td>
-                <td>
-                    <button class="btn btn-sm btn-outline" onclick='mostrarFormProveedor(${JSON.stringify(p)})'><i class="fas fa-edit"></i></button>
-                </td>
-            </tr>`;
-    }).join('');
+            </tr>
+        `).join('');
+    });
 }
 
 async function toggleProveedor(id, nuevoEstado) {
-    await fetch(`/api/proveedores/${id}/estado`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activo: nuevoEstado })
-    });
-    showToast(nuevoEstado ? 'Proveedor activado' : 'Proveedor desactivado');
-    renderProveedores();
+    try {
+        await fetch(`/api/proveedores/${id}/estado`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ activo: nuevoEstado })
+        });
+        showToast(nuevoEstado ? 'Proveedor activado' : 'Proveedor desactivado');
+        renderProveedores();
+    } catch (err) {
+        showToast('Error al cambiar estado', 'error');
+    }
 }
 
 function mostrarFormProveedor(prov = null) {
     const isEdit = prov !== null;
     const html = `
-        <form id="formProveedor" style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
-            <div class="form-group-modal" style="grid-column:1/-1;">
-                <label>Razón Social *</label>
-                <input type="text" id="fp_rs" required placeholder="Nombre de la empresa" value="${isEdit ? prov.razon_social : ''}">
-            </div>
-            <div class="form-group-modal">
-                <label>RUC / RFC</label>
-                <input type="text" id="fp_ruc" placeholder="Ej: 20123456789" value="${isEdit ? (prov.ruc || '') : ''}">
-            </div>
-            <div class="form-group-modal">
-                <label>Categoría</label>
-                <select id="fp_cat">
-                    <option ${isEdit && prov.categoria === 'Materiales' ? 'selected' : ''}>Materiales</option>
-                    <option ${isEdit && prov.categoria === 'Maquinaria' ? 'selected' : ''}>Maquinaria</option>
-                    <option ${isEdit && prov.categoria === 'Mano de Obra' ? 'selected' : ''}>Mano de Obra</option>
-                    <option ${isEdit && prov.categoria === 'Servicios' ? 'selected' : ''}>Servicios</option>
-                    <option ${isEdit && prov.categoria === 'Transporte' ? 'selected' : ''}>Transporte</option>
-                    <option ${!isEdit || prov.categoria === 'General' ? 'selected' : ''}>General</option>
-                </select>
-            </div>
-            <div class="form-group-modal">
-                <label>Nombre de Contacto</label>
-                <input type="text" id="fp_con" placeholder="Nombre del representante" value="${isEdit ? (prov.contacto_nombre || '') : ''}">
-            </div>
-            <div class="form-group-modal">
-                <label>Teléfono</label>
-                <input type="text" id="fp_tel" placeholder="Ej: 987654321" value="${isEdit ? (prov.telefono || '') : ''}">
-            </div>
-            <div class="form-group-modal">
-                <label>Correo</label>
-                <input type="email" id="fp_cor" placeholder="correo@empresa.com" value="${isEdit ? (prov.correo || '') : ''}">
-            </div>
-            <div class="form-group-modal" style="grid-column:1/-1;">
-                <label>Dirección</label>
-                <input type="text" id="fp_dir" placeholder="Dirección completa" value="${isEdit ? (prov.direccion || '') : ''}">
-            </div>
-            <div class="form-group-modal" style="grid-column:1/-1;">
-                <label>Condiciones de Pago</label>
-                <select id="fp_pago">
+        <form id="formProveedor">
+            <div class="form-group-modal"><label>RUC / ID</label><input type="text" id="fpr_ruc" required value="${isEdit ? prov.ruc : ''}"></div>
+            <div class="form-group-modal"><label>Razón Social</label><input type="text" id="fpr_nom" required value="${isEdit ? prov.razon_social : ''}"></div>
+            <div class="form-group-modal"><label>Dirección</label><input type="text" id="fpr_dir" value="${isEdit ? (prov.direccion || '') : ''}"></div>
+            <div class="form-group-modal"><label>Teléfono</label><input type="text" id="fpr_tel" value="${isEdit ? (prov.telefono || '') : ''}"></div>
+            <div class="form-group-modal"><label>Correo Electrónico</label><input type="email" id="fpr_cor" value="${isEdit ? (prov.correo || '') : ''}"></div>
+            <div class="form-group-modal"><label>Condiciones Pago</label>
+                <select id="fpr_pag">
                     <option ${isEdit && prov.condiciones_pago === 'Contado' ? 'selected' : ''}>Contado</option>
-                    <option ${isEdit && prov.condiciones_pago === '15 días' ? 'selected' : ''}>15 días</option>
-                    <option ${isEdit && prov.condiciones_pago === '30 días' ? 'selected' : ''}>30 días</option>
-                    <option ${isEdit && prov.condiciones_pago === '45 días' ? 'selected' : ''}>45 días</option>
-                    <option ${isEdit && prov.condiciones_pago === '60 días' ? 'selected' : ''}>60 días</option>
                     <option ${isEdit && prov.condiciones_pago === 'Crédito' ? 'selected' : ''}>Crédito</option>
+                    <option ${isEdit && prov.condiciones_pago === '30 días' ? 'selected' : ''}>30 días</option>
                 </select>
             </div>
-            <div style="grid-column:1/-1;">
-                <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Actualizar' : 'Registrar'} Proveedor</button>
+            <div class="form-group-modal"><label>Contacto</label><input type="text" id="fpr_con" value="${isEdit ? (prov.contacto_nombre || '') : ''}"></div>
+            <div class="form-group-modal"><label>Categoría</label>
+                <select id="fpr_cat">
+                    <option ${isEdit && prov.categoria === 'Materiales' ? 'selected' : ''}>Materiales</option>
+                    <option ${isEdit && prov.categoria === 'Servicios' ? 'selected' : ''}>Servicios</option>
+                    <option ${isEdit && prov.categoria === 'Maquinaria' ? 'selected' : ''}>Maquinaria</option>
+                    <option ${isEdit && prov.categoria === 'Otros' ? 'selected' : ''}>Otros</option>
+                </select>
             </div>
+            <button class="btn btn-primary btn-block">${isEdit ? 'Actualizar' : 'Registrar'} Proveedor</button>
         </form>
     `;
     abrirModal(isEdit ? 'Editar Proveedor' : 'Nuevo Proveedor', html);
+
     document.getElementById('formProveedor').onsubmit = async (e) => {
         e.preventDefault();
+        console.log("--- INICIANDO ENVÍO DE PROVEEDOR ---");
+        
         const data = {
-            razon_social: document.getElementById('fp_rs').value,
-            ruc: document.getElementById('fp_ruc').value,
-            categoria: document.getElementById('fp_cat').value,
-            contacto_nombre: document.getElementById('fp_con').value,
-            telefono: document.getElementById('fp_tel').value,
-            correo: document.getElementById('fp_cor').value,
-            direccion: document.getElementById('fp_dir').value,
-            condiciones_pago: document.getElementById('fp_pago').value
+            ruc: document.getElementById('fpr_ruc').value,
+            razon_social: document.getElementById('fpr_nom').value,
+            direccion: document.getElementById('fpr_dir').value,
+            contacto_nombre: document.getElementById('fpr_con').value,
+            telefono: document.getElementById('fpr_tel').value,
+            correo: document.getElementById('fpr_cor').value,
+            condiciones_pago: document.getElementById('fpr_pag').value,
+            categoria: document.getElementById('fpr_cat').value
         };
 
-        const url = isEdit ? `/api/proveedores/${prov.id_proveedor}` : '/api/proveedores';
-        const method = isEdit ? 'PUT' : 'POST';
+        console.log("Datos a enviar:", data);
 
-        const res = await fetch(url, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        if (res.ok) {
-            document.getElementById('modalContainer').classList.add('hidden');
-            showToast(isEdit ? 'Proveedor actualizado' : 'Proveedor registrado');
-            renderProveedores();
-        } else {
-            showToast('Error al procesar el proveedor', 'error');
+        const method = isEdit ? 'PUT' : 'POST';
+        const url = isEdit ? `/api/proveedores/${prov.id_proveedor}` : '/api/proveedores';
+
+        console.log(`Acción: ${method}, URL: ${url}`);
+
+        if (isEdit && (!prov || !prov.id_proveedor)) {
+            alert("⚠️ Error: El sistema no detecta el ID de este proveedor. No se puede editar.");
+            console.error("ID faltante en el objeto prov:", prov);
+            return;
+        }
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            console.log("Respuesta del servidor:", res.status);
+            
+            if(res.ok) {
+                document.getElementById('modalContainer').classList.add('hidden');
+                showToast(isEdit ? '✓ Proveedor actualizado' : '✓ Proveedor registrado');
+                renderProveedores();
+            } else {
+                const errData = await res.json();
+                console.error("Error del servidor:", errData);
+                showToast(errData.error || 'Error al guardar', 'error');
+            }
+        } catch (err) {
+            console.error("Error de conexión:", err);
+            showToast('Error de conexión con el servidor', 'error');
         }
     };
 }
-
 // ---------------------------------------------------------
 // CHARTS
 // ---------------------------------------------------------
@@ -1256,4 +1417,183 @@ async function initCharts() {
     } catch (e) {
         console.error('Error cargando gráficas del dashboard:', e);
     }
+}
+
+// ---------------------------------------------------------
+// VISTAS DE CLIENTE
+// ---------------------------------------------------------
+
+async function renderCatalogo() {
+    const area = document.getElementById('contentArea');
+    area.innerHTML = `
+        <div class="catalog-grid" id="catalogGrid">
+            <div style="grid-column: 1/-1; text-align:center; padding:50px;"><i class="fas fa-spinner fa-spin fa-2x"></i></div>
+        </div>
+    `;
+
+    try {
+        const res = await fetch('/api/catalogo/unificado');
+        if (!res.ok) return;
+        const productos = await res.json();
+        
+        const grid = document.getElementById('catalogGrid');
+        if (productos.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:50px;">No hay productos ni maquinaria disponibles.</div>';
+            return;
+        }
+
+        grid.innerHTML = productos.map(p => `
+            <div class="card product-card">
+                <div class="product-image">
+                    <img src="${p.img || (p.tipo === 'maquinaria' ? 'https://img.freepik.com/vector-premium/vector-ilustracion-icono-maquinaria-pesada_1120067-111451.jpg' : 'https://via.placeholder.com/300x200?text=Material')}" alt="${p.nom}">
+                </div>
+                <div class="product-info">
+                    <span class="category">${p.cat}</span>
+                    <h3>${p.nom}</h3>
+                    <p class="description">Ref: ${p.cod}</p>
+                    <div class="product-footer">
+                        <span class="price">${fmt.format(p.pre || 0)}</span>
+                        <button class="btn btn-primary" onclick="mostrarFormReserva(${p.id}, '${p.nom}', ${p.pre}, '${p.tipo}')">
+                            <i class="fas fa-calendar-plus"></i> Reservar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        console.error('Error al cargar catálogo:', err);
+    }
+}
+
+function mostrarFormReserva(id, nombre, precio, tipo) {
+    const html = `
+        <form id="formReserva">
+            <div style="margin-bottom:15px; padding:10px; background:#f0f7ff; border-radius:5px;">
+                <strong>Producto/Equipo:</strong> ${nombre}<br>
+                <strong>Tipo:</strong> ${tipo.toUpperCase()}<br>
+                <strong>Precio:</strong> ${fmt.format(precio)}
+            </div>
+            <div class="form-group-modal">
+                <label>Cantidad/Unidades</label>
+                <input type="number" id="res_cant" value="1" min="1" required>
+            </div>
+            <div class="form-group-modal">
+                <label>Total Estimado</label>
+                <input type="text" id="res_total" value="${fmt.format(precio)}" readonly style="background:#eee;">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Confirmar Reservación</button>
+        </form>
+    `;
+    abrirModal(`Reservar ${tipo}`, html);
+
+    document.getElementById('res_cant').oninput = (e) => {
+        const cant = parseFloat(e.target.value) || 0;
+        document.getElementById('res_total').value = fmt.format(cant * precio);
+    };
+
+    document.getElementById('formReserva').onsubmit = async (e) => {
+        e.preventDefault();
+        const data = {
+            id_usuario: usuarioActual.id_usuario,
+            id_mat: id,
+            tipo: tipo,
+            cantidad: document.getElementById('res_cant').value,
+            precio_total: parseFloat(document.getElementById('res_total').value.replace(/[^0-9.]/g, ''))
+        };
+
+        const res = await fetch('/api/reservas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            document.getElementById('modalContainer').classList.add('hidden');
+            showToast('✓ Reservación enviada correctamente');
+        } else {
+            showToast('Error al enviar reservación', 'error');
+        }
+    };
+}
+
+async function renderMisReservas() {
+    const area = document.getElementById('contentArea');
+    area.innerHTML = `
+        <div class="card">
+            <table>
+                <thead><tr><th>Fecha</th><th>Material</th><th>Cantidad</th><th>Total</th><th>Estado</th></tr></thead>
+                <tbody id="listaMisReservas"><tr><td colspan="5" style="text-align:center;">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`/api/reservas/usuario/${usuarioActual.id_usuario}`);
+        const reservas = await res.json();
+        const tbody = document.getElementById('listaMisReservas');
+
+        if (reservas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Aún no ha realizado ninguna reservación.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = reservas.map(r => `
+            <tr>
+                <td>${new Date(r.fecha_reserva).toLocaleDateString()}</td>
+                <td><strong>${r.nombre_material}</strong></td>
+                <td>${r.cantidad}</td>
+                <td>${fmt.format(r.precio_total)}</td>
+                <td><span class="badge" style="background:#f1c40f; color:#000;">${r.estado}</span></td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        console.error('Error al cargar reservas:', err);
+    }
+}
+
+async function renderPedidosAdmin() {
+    const area = document.getElementById('contentArea');
+    const title = document.getElementById('pageTitle');
+    title.textContent = 'Gestión de Pedidos de Clientes';
+
+    area.innerHTML = `
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Tipo</th>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Total</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="listaPedidosAdmin">
+                    <tr><td colspan="7" style="text-align:center">Cargando pedidos...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    fetch('/api/reservas').then(r => r.json()).then(pedidos => {
+        const tbody = document.getElementById('listaPedidosAdmin');
+        if(!tbody) return;
+        if(pedidos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">No hay pedidos registrados</td></tr>';
+            return;
+        }
+        tbody.innerHTML = pedidos.map(p => `
+            <tr>
+                <td>${new Date(p.fecha_reserva).toLocaleDateString()}</td>
+                <td><strong>${p.cliente}</strong></td>
+                <td><span class="badge ${p.tipo_producto === 'Maquinaria' ? 'badge-warning' : 'badge-info'}">${p.tipo_producto}</span></td>
+                <td>${p.producto_nombre}</td>
+                <td>${p.cantidad}</td>
+                <td><strong>${fmt.format(p.precio_total)}</strong></td>
+                <td><span class="status-badge ${p.estado.toLowerCase()}">${p.estado}</span></td>
+            </tr>
+        `).join('');
+    });
 }

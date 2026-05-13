@@ -35,6 +35,32 @@
                     <a href="#">¿Olvidó su contraseña?</a>
                 </div>
                 <button type="submit" class="btn btn-primary btn-block">Iniciar Sesión</button>
+                <p style="text-align:center; margin-top:15px;">
+                    ¿No tiene cuenta? <a href="#" id="linkGoRegister">Regístrese aquí</a>
+                </p>
+            </form>
+
+            <form id="registerForm" class="hidden">
+                <div class="form-group">
+                    <label>Nombre Completo</label>
+                    <input type="text" id="reg_nombre" placeholder="Ej: Juan Pérez" required>
+                </div>
+                <div class="form-group">
+                    <label>Nombre de Usuario</label>
+                    <input type="text" id="reg_user" placeholder="Ej: juan123" required>
+                </div>
+                <div class="form-group">
+                    <label>Correo Electrónico</label>
+                    <input type="email" id="reg_email" placeholder="juan@ejemplo.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Contraseña</label>
+                    <input type="password" id="reg_pass" placeholder="Mínimo 8 caracteres" required minlength="8">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Crear Cuenta</button>
+                <p style="text-align:center; margin-top:15px;">
+                    ¿Ya tiene cuenta? <a href="#" id="linkGoLogin">Inicie sesión</a>
+                </p>
             </form>
             <div class="login-copyright">
                 &copy; 2026 Sistema de Gestión de Obras. Todos los derechos reservados.
@@ -81,6 +107,16 @@
                 </a>
                 <a href="#" class="menu-item" data-page="usuarios">
                     <i class="fas fa-cog"></i> Usuarios
+                </a>
+                <a href="#" class="menu-item" data-page="pedidos">
+                    <i class="fas fa-shopping-basket"></i> Pedidos
+                </a>
+                <!-- Opciones para Clientes -->
+                <a href="#" class="menu-item hidden" data-page="catalogo">
+                    <i class="fas fa-shopping-bag"></i> Catálogo
+                </a>
+                <a href="#" class="menu-item hidden" data-page="mis_reservas">
+                    <i class="fas fa-calendar-check"></i> Mis Reservas
                 </a>
             </nav>
             <div class="sidebar-footer">
