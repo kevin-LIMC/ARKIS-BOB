@@ -175,6 +175,19 @@ app.post('/api/auth/login', async (req, res) => {
             const match = await bcrypt.compare(password, user.password);
             
             if (match) {
+                // REGISTRAR SESIÓN
+                try {
+                    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+                    await sql.query`
+                        INSERT INTO Seguridad.Sesiones (id_usuario, fecha_inicio, ultima_actividad, estado, ip_address)
+                        VALUES (${user.id_usuario}, GETDATE(), GETDATE(), 'Activa', ${ip})
+                    `;
+                    // También actualizamos el último acceso en la tabla usuarios
+                    await sql.query`UPDATE Seguridad.usuarios SET ultimo_acceso = GETDATE() WHERE id_usuario = ${user.id_usuario}`;
+                } catch (sessErr) {
+                    console.error('Error registrando sesión:', sessErr);
+                }
+
                 delete user.password;
                 res.json(user);
             } else {
@@ -846,11 +859,77 @@ app.get('/api/reportes/financiero', async (req, res) => {
     }
 });
 
-/*
-app.get('*', (req, res) => {
+// --- MÓDULO DE MONITOREO DE USUARIOS ---
+
+// Obtener actividad de usuarios para el Administrador
+app.get('/api/monitoreo/usuarios', async (req, res) => {
+    try {
+        await sql.connect(connectionString || dbConfig);
+        const result = await sql.query`
+            SELECT 
+                s.id_sesion,
+                u.nombre_completo,
+                u.username,
+                r.nombre_rol as rol,
+                s.fecha_inicio,
+                s.fecha_fin,
+                s.ultima_actividad,
+                s.ip_address,
+                s.estado,
+                CASE 
+                    WHEN s.estado = 'Activa' AND DATEDIFF(MINUTE, s.ultima_actividad, GETDATE()) < 10 THEN 'En línea'
+                    WHEN s.estado = 'Activa' THEN 'Inactivo'
+                    ELSE 'Desconectado'
+                END as estatus_real
+            FROM Seguridad.Sesiones s
+            JOIN Seguridad.usuarios u ON s.id_usuario = u.id_usuario
+            JOIN Seguridad.roles r ON u.id_rol = r.id_rol
+            ORDER BY s.ultima_actividad DESC
+        `;
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Cerrar sesión (Logout)
+app.post('/api/auth/logout', async (req, res) => {
+    const { id_usuario } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        // Cerramos todas las sesiones activas de este usuario
+        await sql.query`
+            UPDATE Seguridad.Sesiones 
+            SET fecha_fin = GETDATE(), 
+                estado = 'Cerrada' 
+            WHERE id_usuario = ${id_usuario} AND estado = 'Activa'
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actualizar última actividad (Ping)
+app.post('/api/auth/ping', async (req, res) => {
+    const { id_usuario } = req.body;
+    try {
+        await sql.connect(connectionString || dbConfig);
+        await sql.query`
+            UPDATE Seguridad.Sesiones 
+            SET ultima_actividad = GETDATE() 
+            WHERE id_usuario = ${id_usuario} AND estado = 'Activa'
+        `;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Ruta de emergencia para servir el frontend (Atrapa cualquier ruta no definida)
+app.use((req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-*/
 
 app.listen(port, () => {
     console.log(`BobConstruye V2 corriendo en http://localhost:${port}`);

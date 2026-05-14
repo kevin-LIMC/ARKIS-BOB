@@ -30,6 +30,10 @@ function initApp() {
                     aplicarPermisos();
                     document.getElementById('loginPage').classList.add('hidden');
                     document.getElementById('appContainer').classList.remove('hidden');
+                    
+                    // Iniciar rastreo de actividad (Ping cada 5 minutos)
+                    iniciarRastreoActividad();
+                    
                     navegarA('dashboard');
                 } else {
                     alert('Usuario o contraseña incorrectos');
@@ -119,8 +123,41 @@ function initApp() {
     // Botón Salir
     const btnLogout = document.getElementById('btnLogout');
     if(btnLogout) {
-        btnLogout.onclick = () => { location.reload(); };
+        btnLogout.onclick = async () => { 
+            if (usuarioActual) {
+                // Avisar al servidor que nos vamos
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id_usuario: usuarioActual.id_usuario })
+                });
+            }
+            location.reload(); 
+        };
     }
+}
+
+// Envía una señal al servidor para decir "sigo aquí"
+function iniciarRastreoActividad() {
+    if (!usuarioActual) return;
+    
+    // Primer ping inmediato
+    fetch('/api/auth/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_usuario: usuarioActual.id_usuario })
+    });
+
+    // Repetir cada 5 minutos
+    setInterval(() => {
+        if (usuarioActual) {
+            fetch('/api/auth/ping', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id_usuario: usuarioActual.id_usuario })
+            });
+        }
+    }, 5 * 60 * 1000); 
 }
 
 function aplicarPermisos() {
@@ -237,6 +274,11 @@ async function navegarA(pagina) {
             title.textContent = 'Gestión de Pedidos';
             subtitle.textContent = 'Administre las solicitudes de los clientes';
             renderPedidosAdmin();
+            break;
+        case 'monitoreo':
+            title.textContent = 'Monitoreo de Actividad';
+            subtitle.textContent = 'Rastreo en tiempo real de usuarios y sesiones';
+            renderMonitoreo();
             break;
         default:
             area.innerHTML = `<h3>Sección ${pagina} en construcción</h3>`;
@@ -1596,4 +1638,68 @@ async function renderPedidosAdmin() {
             </tr>
         `).join('');
     });
+}
+
+async function renderMonitoreo() {
+    const area = document.getElementById('contentArea');
+    area.innerHTML = `
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; margin-bottom:20px; align-items:center;">
+                <h3 style="margin:0;">Registro de Sesiones y Actividad</h3>
+                <button class="btn btn-outline" onclick="renderMonitoreo()"><i class="fas fa-sync"></i> Actualizar</button>
+            </div>
+            <div class="table-container" style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Usuario</th>
+                            <th>Rol</th>
+                            <th>Inicio Sesión</th>
+                            <th>Última Actividad</th>
+                            <th>Desconexión</th>
+                            <th>IP</th>
+                            <th>Estado Actual</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaMonitoreo"><tr><td colspan="7" style="text-align:center;">Cargando monitoreo...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    try {
+        const res = await fetch('/api/monitoreo/usuarios');
+        const data = await res.json();
+        const tbody = document.getElementById('listaMonitoreo');
+        
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No hay registros de actividad.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(s => {
+            let badgeColor = '#95a5a6'; // Gris desconectado
+            if (s.estatus_real === 'En línea') badgeColor = '#27ae60'; // Verde
+            if (s.estatus_real === 'Inactivo') badgeColor = '#f1c40f'; // Amarillo
+
+            return `
+                <tr>
+                    <td><strong>${s.nombre_completo}</strong><br><small style="color:#666">${s.username}</small></td>
+                    <td><span class="badge" style="background:#eee; color:#333; font-size:0.8em; padding:2px 6px;">${s.rol}</span></td>
+                    <td><small>${new Date(s.fecha_inicio).toLocaleString()}</small></td>
+                    <td><small>${new Date(s.ultima_actividad).toLocaleString()}</small></td>
+                    <td><small>${s.fecha_fin ? new Date(s.fecha_fin).toLocaleString() : '-'}</small></td>
+                    <td><code style="font-size:0.8em">${s.ip_address || 'Desconocida'}</code></td>
+                    <td>
+                        <span class="badge" style="background:${badgeColor}; color:white; padding:4px 8px; border-radius:12px; font-size:0.85em;">
+                            ${s.estatus_real}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Error en monitoreo:', err);
+        document.getElementById('listaMonitoreo').innerHTML = '<tr><td colspan="7" style="text-align:center; color:red;">Error al cargar datos</td></tr>';
+    }
 }
