@@ -778,13 +778,13 @@ app.get('/api/roles', async (req, res) => {
 // Obtener Lista de Usuarios
 app.get('/api/usuarios', async (req, res) => {
     try {
-        await sql.connect(connectionString || dbConfig);
-        const result = await sql.query`
+        const pool = await getPool();
+        const result = await pool.request().query(`
             SELECT u.id_usuario, u.username, u.nombre_completo, u.correo, r.nombre_rol, u.activo, u.id_rol
             FROM Seguridad.usuarios u
             JOIN Seguridad.roles r ON u.id_rol = r.id_rol
             ORDER BY u.id_usuario ASC
-        `;
+        `);
         res.json(result.recordset);
     } catch (err) {
         res.status(500).json({ error: err.message });
