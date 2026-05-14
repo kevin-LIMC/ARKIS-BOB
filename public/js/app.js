@@ -1004,7 +1004,7 @@ function renderUsuarios() {
             return;
         }
         
-        tbody.innerHTML = data.map(u => `
+        tbody.innerHTML = data.map((u, index) => `
             <tr>
                 <td><strong><i class="fas fa-user"></i> ${u.username}</strong></td>
                 <td>${u.nombre_completo}</td>
