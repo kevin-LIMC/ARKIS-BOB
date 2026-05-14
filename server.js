@@ -5,6 +5,7 @@ const sql = require('mssql');
 const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -43,21 +44,25 @@ let dbConfig = {
 // En Azure/Render usaremos una cadena de conexión simple
 const connectionString = process.env.DATABASE_URL;
 
+// Conexión global a la base de datos (Pool)
+let pool;
+async function getPool() {
+    if (!pool) {
+        try {
+            console.log('--- CONECTANDO A SQL SERVER ---');
+            pool = await sql.connect(connectionString || dbConfig);
+            console.log('✓ POOL DE CONEXIONES LISTO');
+        } catch (err) {
+            console.error('✗ ERROR AL CREAR POOL:', err.message);
+            throw err;
+        }
+    }
+    return pool;
+}
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Depuración de imágenes: registra cada intento de acceso a /uploads
-app.use('/uploads', (req, res, next) => {
-    const fullPath = path.join(__dirname, 'public', 'uploads', req.path);
-    console.log(`[DEBUG] Solicitud imagen: ${req.path} -> Buscando en: ${fullPath}`);
-    if (fs.existsSync(fullPath)) {
-        console.log(`[DEBUG] ¡Archivo encontrado!`);
-    } else {
-        console.warn(`[DEBUG] ¡Archivo NO encontrado en el disco!`);
-    }
-    next();
-});
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 // ==========================================
@@ -67,15 +72,15 @@ app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 // Endpoint de Estadísticas para el Dashboard
 app.get('/api/dashboard/stats', async (req, res) => {
     try {
-        await sql.connect(connectionString || dbConfig);
-        const stats = await sql.query`
+        const pool = await getPool();
+        const stats = await pool.request().query(`
             SELECT 
                 ISNULL(SUM(monto_contrato), 0) as presupuesto_total,
                 ISNULL((SELECT SUM(monto_total) FROM Finanzas.gastos), 0) as gasto_total,
                 (SELECT COUNT(*) FROM Operaciones.obras) as total_obras,
                 (SELECT COUNT(*) FROM Auditoria.alertas WHERE leida = 0) as total_alertas
             FROM Operaciones.obras
-        `;
+        `);
         res.json(stats.recordset[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -116,8 +121,6 @@ app.get('/api/dashboard/charts', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
-const bcrypt = require('bcrypt'); // Añadir al inicio de los endpoints
 
 // Registro Público de Usuarios (Clientes)
 app.post('/api/auth/register', async (req, res) => {
@@ -162,13 +165,15 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
     try {
-        await sql.connect(connectionString || dbConfig);
-        const result = await sql.query`
+        const pool = await getPool();
+        const result = await pool.request()
+            .input('user', sql.NVarChar, username)
+            .query(`
             SELECT u.*, r.nombre_rol, r.permisos 
             FROM Seguridad.usuarios u
             JOIN Seguridad.roles r ON u.id_rol = r.id_rol
-            WHERE u.username = ${username}
-        `;
+            WHERE u.username = @user
+        `);
         
         if (result.recordset.length > 0) {
             const user = result.recordset[0];
@@ -209,18 +214,19 @@ app.post('/api/auth/login', async (req, res) => {
 // Obtener Obras (con progreso real)
 app.get('/api/obras', async (req, res) => {
     try {
-        await sql.connect(connectionString || dbConfig);
-        const result = await sql.query`
+        const pool = await getPool();
+        const result = await pool.request().query(`
             SELECT 
                 o.*, 
                 o.monto_contrato as presupuesto_total,
+                o.monto_contrato,
                 c.razon_social as cliente_nombre,
                 e.nombre as estado_nombre,
                 ISNULL((SELECT SUM(monto_total) FROM Finanzas.gastos WHERE id_obra = o.id_obra), 0) as total_gastado
             FROM Operaciones.obras o
             LEFT JOIN Operaciones.clientes c ON o.id_cliente = c.id_cliente
             LEFT JOIN Config.estados_obra e ON o.id_estado_obra = e.id_estado
-        `;
+        `);
         res.json(result.recordset);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -229,13 +235,21 @@ app.get('/api/obras', async (req, res) => {
 
 // Crear Nueva Obra
 app.post('/api/obras', async (req, res) => {
-    const { codigo_obra, nombre_proyecto, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato } = req.body;
+    const { codigo_obra, nombre_proyecto, direccion, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato } = req.body;
     try {
-        await sql.connect(connectionString || dbConfig);
-        await sql.query`
-            INSERT INTO Operaciones.obras (codigo_obra, nombre_proyecto, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato)
-            VALUES (${codigo_obra}, ${nombre_proyecto}, ${id_cliente}, ${id_tipo_obra}, ${id_estado_obra}, ${monto_contrato})
-        `;
+        const pool = await getPool();
+        await pool.request()
+            .input('cod', sql.NVarChar, codigo_obra)
+            .input('nom', sql.NVarChar, nombre_proyecto)
+            .input('dir', sql.NVarChar, direccion)
+            .input('cli', sql.Int, id_cliente)
+            .input('tip', sql.Int, id_tipo_obra)
+            .input('est', sql.Int, id_estado_obra)
+            .input('mon', sql.Decimal(18,2), monto_contrato)
+            .query(`
+            INSERT INTO Operaciones.obras (codigo_obra, nombre_proyecto, direccion, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato)
+            VALUES (@cod, @nom, @dir, @cli, @tip, @est, @mon)
+        `);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -257,19 +271,29 @@ app.get('/api/obras/:id', async (req, res) => {
 // Actualizar Obra
 app.put('/api/obras/:id', async (req, res) => {
     const { id } = req.params;
-    const { codigo_obra, nombre_proyecto, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato } = req.body;
+    const { codigo_obra, nombre_proyecto, direccion, id_cliente, id_tipo_obra, id_estado_obra, monto_contrato } = req.body;
     try {
-        await sql.connect(connectionString || dbConfig);
-        await sql.query`
+        const pool = await getPool();
+        await pool.request()
+            .input('id', sql.Int, id)
+            .input('cod', sql.NVarChar, codigo_obra)
+            .input('nom', sql.NVarChar, nombre_proyecto)
+            .input('dir', sql.NVarChar, direccion)
+            .input('cli', sql.Int, id_cliente)
+            .input('tip', sql.Int, id_tipo_obra)
+            .input('est', sql.Int, id_estado_obra)
+            .input('mon', sql.Decimal(18,2), monto_contrato)
+            .query(`
             UPDATE Operaciones.obras 
-            SET codigo_obra = ${codigo_obra}, 
-                nombre_proyecto = ${nombre_proyecto}, 
-                id_cliente = ${id_cliente}, 
-                id_tipo_obra = ${id_tipo_obra}, 
-                id_estado_obra = ${id_estado_obra}, 
-                monto_contrato = ${monto_contrato}
-            WHERE id_obra = ${id}
-        `;
+            SET codigo_obra = @cod, 
+                nombre_proyecto = @nom, 
+                direccion = @dir,
+                id_cliente = @cli, 
+                id_tipo_obra = @tip, 
+                id_estado_obra = @est, 
+                monto_contrato = @mon
+            WHERE id_obra = @id
+        `);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -280,14 +304,24 @@ app.put('/api/obras/:id', async (req, res) => {
 app.post('/api/gastos', async (req, res) => {
     const { id_obra, id_partida, fecha_gasto, numero_factura, id_proveedor, concepto, monto_total, id_forma_pago, estado_gasto } = req.body;
     try {
-        await sql.connect(connectionString || dbConfig);
-        await sql.query`
+        const pool = await getPool();
+        await pool.request()
+            .input('obra', sql.Int, id_obra)
+            .input('partida', sql.Int, id_partida || null)
+            .input('fecha', sql.DateTime, fecha_gasto)
+            .input('factura', sql.NVarChar, numero_factura)
+            .input('proveedor', sql.Int, id_proveedor)
+            .input('concepto', sql.NVarChar, concepto)
+            .input('monto', sql.Decimal(18,2), monto_total)
+            .input('pago', sql.Int, id_forma_pago)
+            .input('estado', sql.NVarChar, estado_gasto)
+            .query(`
             INSERT INTO Finanzas.gastos (id_obra, id_partida, fecha_gasto, numero_factura, id_proveedor, concepto, monto_total, id_forma_pago, estado_gasto)
-            VALUES (${id_obra}, ${id_partida ? id_partida : null}, ${fecha_gasto}, ${numero_factura}, ${id_proveedor}, ${concepto}, ${monto_total}, ${id_forma_pago}, ${estado_gasto})
-        `;
+            VALUES (@obra, @partida, @fecha, @factura, @proveedor, @concepto, @monto, @pago, @estado)
+        `);
         res.json({ success: true });
     } catch (err) {
-        console.error('Error insertando gasto:', err);
+        console.error('Error insertando gasto:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -297,22 +331,34 @@ app.put('/api/gastos/:id', async (req, res) => {
     const { id } = req.params;
     const { id_obra, id_partida, fecha_gasto, numero_factura, id_proveedor, concepto, monto_total, id_forma_pago, estado_gasto } = req.body;
     try {
-        await sql.connect(connectionString || dbConfig);
-        await sql.query`
+        const pool = await getPool();
+        await pool.request()
+            .input('id', sql.Int, id)
+            .input('obra', sql.Int, id_obra)
+            .input('partida', sql.Int, id_partida || null)
+            .input('fecha', sql.DateTime, fecha_gasto)
+            .input('factura', sql.NVarChar, numero_factura)
+            .input('proveedor', sql.Int, id_proveedor)
+            .input('concepto', sql.NVarChar, concepto)
+            .input('monto', sql.Decimal(18,2), monto_total)
+            .input('pago', sql.Int, id_forma_pago)
+            .input('estado', sql.NVarChar, estado_gasto)
+            .query(`
             UPDATE Finanzas.gastos
-            SET id_obra = ${id_obra},
-                id_partida = ${id_partida ? id_partida : null},
-                fecha_gasto = ${fecha_gasto},
-                numero_factura = ${numero_factura},
-                id_proveedor = ${id_proveedor},
-                concepto = ${concepto},
-                monto_total = ${monto_total},
-                id_forma_pago = ${id_forma_pago},
-                estado_gasto = ${estado_gasto}
-            WHERE id_gasto = ${id}
-        `;
+            SET id_obra = @obra,
+                id_partida = @partida,
+                fecha_gasto = @fecha,
+                numero_factura = @factura,
+                id_proveedor = @proveedor,
+                concepto = @concepto,
+                monto_total = @monto,
+                id_forma_pago = @pago,
+                estado_gasto = @estado
+            WHERE id_gasto = @id
+        `);
         res.json({ success: true });
     } catch (err) {
+        console.error('Error actualizando gasto:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -320,8 +366,8 @@ app.put('/api/gastos/:id', async (req, res) => {
 // Obtener Listado de Gastos
 app.get('/api/gastos', async (req, res) => {
     try {
-        await sql.connect(connectionString || dbConfig);
-        const result = await sql.query`
+        const pool = await getPool();
+        const result = await pool.request().query(`
             SELECT 
                 g.*, 
                 o.nombre_proyecto as obra_nombre,
@@ -330,7 +376,7 @@ app.get('/api/gastos', async (req, res) => {
             LEFT JOIN Operaciones.obras o ON g.id_obra = o.id_obra
             LEFT JOIN Finanzas.proveedores p ON g.id_proveedor = p.id_proveedor
             ORDER BY g.fecha_gasto DESC
-        `;
+        `);
         res.json(result.recordset);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -393,9 +439,27 @@ app.get('/api/personal', async (req, res) => {
     try {
         await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
-            SELECT id_trabajador, dni, nombre_completo, puesto, especialidad, tarifa_hora, telefono, activo
-            FROM Operaciones.trabajadores
-            ORDER BY nombre_completo ASC
+            SELECT t.id_trabajador, t.dni, t.nombre_completo, t.puesto, t.especialidad, t.tarifa_hora, t.telefono, t.activo, t.id_usuario, u.username, u.activo as activo_usuario
+            FROM Operaciones.trabajadores t
+            LEFT JOIN Seguridad.usuarios u ON t.id_usuario = u.id_usuario
+            ORDER BY t.nombre_completo ASC
+        `;
+
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Obtener Usuarios Linkeables (que no son trabajadores aún)
+app.get('/api/personal/usuarios-disponibles', async (req, res) => {
+    try {
+        await sql.connect(connectionString || dbConfig);
+        const result = await sql.query`
+            SELECT id_usuario, username, nombre_completo 
+            FROM Seguridad.usuarios 
+            WHERE id_usuario NOT IN (SELECT id_usuario FROM Operaciones.trabajadores WHERE id_usuario IS NOT NULL)
+            AND id_rol != (SELECT id_rol FROM Seguridad.roles WHERE nombre_rol = 'Cliente')
         `;
         res.json(result.recordset);
     } catch (err) {
@@ -403,14 +467,15 @@ app.get('/api/personal', async (req, res) => {
     }
 });
 
+
 // Registrar Nuevo Trabajador
 app.post('/api/personal', async (req, res) => {
-    const { dni, nombre_completo, puesto, especialidad, tarifa_hora, telefono } = req.body;
+    const { dni, nombre_completo, puesto, especialidad, tarifa_hora, telefono, id_usuario } = req.body;
     try {
         await sql.connect(connectionString || dbConfig);
         await sql.query`
-            INSERT INTO Operaciones.trabajadores (dni, nombre_completo, puesto, especialidad, tarifa_hora, telefono, activo, id_tipo_contrato)
-            VALUES (${dni}, ${nombre_completo}, ${puesto}, ${especialidad}, ${tarifa_hora}, ${telefono}, 1, 1)
+            INSERT INTO Operaciones.trabajadores (dni, nombre_completo, puesto, especialidad, tarifa_hora, telefono, activo, id_tipo_contrato, id_usuario)
+            VALUES (${dni}, ${nombre_completo}, ${puesto}, ${especialidad}, ${tarifa_hora}, ${telefono}, 1, 1, ${id_usuario || null})
         `;
         res.json({ success: true });
     } catch (err) {
@@ -418,10 +483,11 @@ app.post('/api/personal', async (req, res) => {
     }
 });
 
+
 // Actualizar Personal
 app.put('/api/personal/:id', async (req, res) => {
     const { id } = req.params;
-    const { dni, nombre_completo, puesto, especialidad, tarifa_hora, telefono } = req.body;
+    const { dni, nombre_completo, puesto, especialidad, tarifa_hora, telefono, id_usuario } = req.body;
     try {
         await sql.connect(connectionString || dbConfig);
         await sql.query`
@@ -431,7 +497,8 @@ app.put('/api/personal/:id', async (req, res) => {
                 puesto = ${puesto},
                 especialidad = ${especialidad},
                 tarifa_hora = ${tarifa_hora},
-                telefono = ${telefono}
+                telefono = ${telefono},
+                id_usuario = ${id_usuario || null}
             WHERE id_trabajador = ${id}
         `;
         res.json({ success: true });
@@ -439,6 +506,7 @@ app.put('/api/personal/:id', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
 
 // --- MÓDULO DE INVENTARIO ---
 
@@ -462,7 +530,7 @@ app.get('/api/catalogo/unificado', async (req, res) => {
     try {
         await sql.connect(connectionString || dbConfig);
         const matRes = await sql.query`SELECT id_material as id, codigo_material as cod, nombre_material as nom, categoria_material as cat, precio_venta as pre, imagen_url as img, 'material' as tipo FROM Almacen.materiales`;
-        const maqRes = await sql.query`SELECT id_maquinaria as id, placa_identificacion as cod, descripcion as nom, 'Maquinaria' as cat, tarifa_alquiler as pre, '' as img, 'maquinaria' as tipo FROM Equipos.maquinaria`;
+        const maqRes = await sql.query`SELECT id_maquinaria as id, placa_identificacion as cod, descripcion as nom, 'Maquinaria' as cat, tarifa_alquiler as pre, imagen_url as img, 'maquinaria' as tipo FROM Equipos.maquinaria`;
         res.json([...matRes.recordset, ...maqRes.recordset]);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -547,7 +615,7 @@ app.get('/api/inventario/maquinaria', async (req, res) => {
     try {
         await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
-            SELECT id_maquinaria, descripcion, placa_identificacion, tarifa_alquiler, estado_operativo
+            SELECT id_maquinaria, descripcion, placa_identificacion, tarifa_alquiler, estado_operativo, imagen_url
             FROM Equipos.maquinaria
             ORDER BY descripcion ASC
         `;
@@ -557,42 +625,122 @@ app.get('/api/inventario/maquinaria', async (req, res) => {
     }
 });
 
-// Registrar Nueva Maquinaria
-app.post('/api/inventario/maquinaria', async (req, res) => {
-    const { descripcion, placa_identificacion, tarifa_alquiler, estado_operativo } = req.body;
+
+// Registrar Nueva Maquinaria (con soporte de imagen)
+app.post('/api/inventario/maquinaria', upload.single('imagen'), async (req, res) => {
     try {
+        console.log('--- REGISTRANDO MAQUINARIA ---');
+        console.log('Body:', req.body);
+        const { descripcion, placa_identificacion, tarifa_alquiler, estado_operativo } = req.body;
+        let imagen_url = req.body.imagen_url || null;
+
+        if (req.file) {
+            imagen_url = `/uploads/${req.file.filename}`;
+            console.log('Imagen subida:', imagen_url);
+        }
+
         await sql.connect(connectionString || dbConfig);
         await sql.query`
-            INSERT INTO Equipos.maquinaria (descripcion, placa_identificacion, tarifa_alquiler, estado_operativo)
-            VALUES (${descripcion}, ${placa_identificacion}, ${tarifa_alquiler}, ${estado_operativo})
+            INSERT INTO Equipos.maquinaria (descripcion, placa_identificacion, tarifa_alquiler, estado_operativo, imagen_url)
+            VALUES (${descripcion}, ${placa_identificacion}, ${parseFloat(tarifa_alquiler) || 0}, ${estado_operativo || 'Operativo'}, ${imagen_url})
         `;
         res.json({ success: true });
     } catch (err) {
+        console.error('Error creando maquinaria:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Actualizar Maquinaria
-app.put('/api/inventario/maquinaria/:id', async (req, res) => {
-    const { id } = req.params;
-    const { descripcion, placa_identificacion, tarifa_alquiler, estado_operativo } = req.body;
+
+// Actualizar Maquinaria (con soporte de imagen)
+app.put('/api/inventario/maquinaria/:id', upload.single('imagen'), async (req, res) => {
     try {
+        const id_maq = parseInt(req.params.id);
+        console.log('--- ACTUALIZANDO MAQUINARIA ID:', id_maq, '---');
+        console.log('Body:', req.body);
+        
+        const { descripcion, placa_identificacion, tarifa_alquiler, estado_operativo } = req.body;
+        let imagen_url = req.body.imagen_url || null;
+
+        if (req.file) {
+            imagen_url = `/uploads/${req.file.filename}`;
+            console.log('Nueva imagen:', imagen_url);
+        }
+
         await sql.connect(connectionString || dbConfig);
         await sql.query`
             UPDATE Equipos.maquinaria
             SET descripcion = ${descripcion},
                 placa_identificacion = ${placa_identificacion},
-                tarifa_alquiler = ${tarifa_alquiler},
-                estado_operativo = ${estado_operativo}
-            WHERE id_maquinaria = ${id}
+                tarifa_alquiler = ${parseFloat(tarifa_alquiler) || 0},
+                estado_operativo = ${estado_operativo},
+                imagen_url = ${imagen_url}
+            WHERE id_maquinaria = ${id_maq}
         `;
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error actualizando maquinaria:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// --- MÓDULO DE MENSAJERÍA INTERNA ---
+
+// Obtener mensajes de un usuario
+app.get('/api/mensajes/:id_usuario', async (req, res) => {
+    const { id_usuario } = req.params;
+    try {
+        const pool = await getPool();
+        const result = await pool.request()
+            .input('id', sql.Int, id_usuario)
+            .query(`
+            SELECT m.*, u.nombre_completo as emisor_nombre, r.nombre_rol as emisor_rol
+            FROM Seguridad.mensajes m
+            JOIN Seguridad.usuarios u ON m.id_emisor = u.id_usuario
+            JOIN Seguridad.roles r ON u.id_rol = r.id_rol
+            WHERE m.id_receptor = @id OR m.id_receptor IS NULL
+            ORDER BY m.fecha_envio DESC
+        `);
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Enviar un mensaje
+app.post('/api/mensajes', async (req, res) => {
+    const { id_emisor, id_receptor, asunto, contenido } = req.body;
+    try {
+        const pool = await getPool();
+        await pool.request()
+            .input('emisor', sql.Int, id_emisor)
+            .input('receptor', sql.Int, id_receptor || null)
+            .input('asunto', sql.NVarChar, asunto)
+            .input('contenido', sql.NVarChar, contenido)
+            .query(`
+            INSERT INTO Seguridad.mensajes (id_emisor, id_receptor, asunto, contenido, fecha_envio, leido)
+            VALUES (@emisor, @receptor, @asunto, @contenido, GETDATE(), 0)
+        `);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// --- MÓDULO DE ALERTAS ---
+// Marcar como leído
+app.put('/api/mensajes/:id/leido', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await getPool();
+        await pool.request()
+            .input('id', sql.Int, id)
+            .query('UPDATE Seguridad.mensajes SET leido = 1 WHERE id_mensaje = @id');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Obtener Lista de Alertas
 app.get('/api/alertas', async (req, res) => {
@@ -645,7 +793,7 @@ app.get('/api/usuarios', async (req, res) => {
 
 // Registrar Nuevo Usuario (solo Adminstradores)
 app.post('/api/usuarios', async (req, res) => {
-    const { username, password, nombre_completo, correo, id_rol } = req.body;
+    const { username, password, nombre_completo, correo, id_rol, crear_trabajador, dni, puesto, tarifa_hora } = req.body;
     
     try {
         // Validar datos requeridos
@@ -669,14 +817,63 @@ app.post('/api/usuarios', async (req, res) => {
         }
 
         // Insertar el nuevo usuario
-        await sql.query`
+        const result = await sql.query`
             INSERT INTO Seguridad.usuarios (username, password, nombre_completo, correo, id_rol, activo, fecha_creacion)
+            OUTPUT INSERTED.id_usuario
             VALUES (${username}, ${hashedPassword}, ${nombre_completo}, ${correo}, ${id_rol}, 1, GETDATE())
         `;
 
-        res.json({ success: true, message: 'Usuario registrado exitosamente' });
+        const newUserId = result.recordset[0].id_usuario;
+
+        // Si se marcó como trabajador, crear entrada en personal
+        if (crear_trabajador) {
+            await sql.query`
+                INSERT INTO Operaciones.trabajadores (dni, nombre_completo, puesto, tarifa_hora, activo, id_tipo_contrato, id_usuario)
+                VALUES (${dni || 'S/D'}, ${nombre_completo}, ${puesto || 'General'}, ${tarifa_hora || 0}, 1, 1, ${newUserId})
+            `;
+        }
+
+        res.json({ success: true, message: 'Usuario registrado exitosamente', id_usuario: newUserId });
     } catch (err) {
         console.error('Error registrando usuario:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// Actualizar Usuario
+app.put('/api/usuarios/:id', async (req, res) => {
+    const { id } = req.params;
+    const { username, password, nombre_completo, correo, id_rol } = req.body;
+    
+    try {
+        await sql.connect(connectionString || dbConfig);
+        
+        let query = `UPDATE Seguridad.usuarios SET 
+                        username = @username, 
+                        nombre_completo = @nombre_completo, 
+                        correo = @correo, 
+                        id_rol = @id_rol`;
+        
+        const request = new sql.Request();
+        request.input('username', sql.NVarChar, username);
+        request.input('nombre_completo', sql.NVarChar, nombre_completo);
+        request.input('correo', sql.NVarChar, correo);
+        request.input('id_rol', sql.Int, id_rol);
+        request.input('id', sql.Int, id);
+
+        if (password && password.trim() !== "") {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            query += `, password = @password`;
+            request.input('password', sql.NVarChar, hashedPassword);
+        }
+
+        query += ` WHERE id_usuario = @id`;
+        
+        await request.query(query);
+        res.json({ success: true, message: 'Usuario actualizado exitosamente' });
+    } catch (err) {
+        console.error('Error actualizando usuario:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -693,6 +890,7 @@ app.put('/api/usuarios/:id/estado', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
 
 // --- MÓDULO DE PROVEEDORES ---
 
