@@ -1023,14 +1023,39 @@ app.get('/api/reservas/usuario/:id', async (req, res) => {
     try {
         await sql.connect(connectionString || dbConfig);
         const result = await sql.query`
-            SELECT r.*, m.nombre_material 
+            SELECT r.*, 
+                   COALESCE(m.nombre_material, maq.descripcion) as nombre_material
             FROM Operaciones.reservas r
-            JOIN Almacen.materiales m ON r.id_material = m.id_material
+            LEFT JOIN Almacen.materiales m ON r.id_material = m.id_material
+            LEFT JOIN Equipos.maquinaria maq ON r.id_maquinaria = maq.id_maquinaria
             WHERE r.id_usuario = ${id}
             ORDER BY r.fecha_reserva DESC
         `;
         res.json(result.recordset);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actualizar estado de una reserva (Entregar pedido)
+app.put('/api/reservas/:id/estado', async (req, res) => {
+    const { id } = req.params;
+    const { estado } = req.body;
+    const logMsg = `[${new Date().toISOString()}] Intentando ID ${id} a ${estado}\n`;
+    fs.appendFileSync('debug_reservas.log', logMsg);
+    
+    try {
+        const pool = await getPool();
+        const result = await pool.request()
+            .input('id_reserva', sql.Int, parseInt(id))
+            .input('estado', sql.NVarChar, estado)
+            .query('UPDATE Operaciones.reservas SET estado = @estado WHERE id_reserva = @id_reserva');
+        
+        const successMsg = `[DEBUG] Filas afectadas: ${result.rowsAffected}\n`;
+        fs.appendFileSync('debug_reservas.log', successMsg);
+        res.json({ success: true, rowsAffected: result.rowsAffected[0] });
+    } catch (err) {
+        fs.appendFileSync('debug_reservas.log', `[ERROR] ${err.message}\n`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1123,6 +1148,97 @@ app.post('/api/auth/ping', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// --- ENDPOINTS DE ELIMINACIÓN ---
+
+// Eliminar Obra
+app.delete('/api/obras/:id', async (req, res) => {
+    try {
+        const pool = await getPool();
+        await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM Operaciones.obras WHERE id_obra = @id');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'No se puede eliminar la obra porque tiene datos asociados (gastos o partidas).' });
+    }
+});
+
+// Eliminar Gasto
+app.delete('/api/gastos/:id', async (req, res) => {
+    try {
+        const pool = await getPool();
+        await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM Finanzas.gastos WHERE id_gasto = @id');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Eliminar Trabajador
+app.delete('/api/personal/:id', async (req, res) => {
+    try {
+        const pool = await getPool();
+        await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM Operaciones.trabajadores WHERE id_trabajador = @id');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'No se puede eliminar el trabajador porque tiene registros vinculados.' });
+    }
+});
+
+// Eliminar Proveedor
+app.delete('/api/proveedores/:id', async (req, res) => {
+    try {
+        const pool = await getPool();
+        await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM Finanzas.proveedores WHERE id_proveedor = @id');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'No se puede eliminar el proveedor porque tiene gastos registrados.' });
+    }
+});
+
+// Eliminar Material
+app.delete('/api/inventario/materiales/:id', async (req, res) => {
+    try {
+        const pool = await getPool();
+        await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM Almacen.materiales WHERE id_material = @id');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'No se puede eliminar el material porque está en uso.' });
+    }
+});
+
+// Eliminar Maquinaria
+app.delete('/api/inventario/maquinaria/:id', async (req, res) => {
+    try {
+        const pool = await getPool();
+        await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM Equipos.maquinaria WHERE id_maquinaria = @id');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- TAREA DE LIMPIEZA AUTOMÁTICA DE MONITOREO ---
+async function limpiarSesionesAntiguas() {
+    try {
+        const pool = await getPool();
+        // Borrar sesiones cerradas hace más de 1 hora
+        const result = await pool.request().query(`
+            DELETE FROM Seguridad.Sesiones 
+            WHERE (estado = 'Cerrada' OR fecha_fin IS NOT NULL)
+            AND fecha_fin < DATEADD(HOUR, -1, GETDATE())
+        `);
+        if (result.rowsAffected[0] > 0) {
+            console.log(`[LIMPIEZA] Se eliminaron ${result.rowsAffected[0]} sesiones antiguas del monitoreo.`);
+        }
+    } catch (err) {
+        console.error('[LIMPIEZA] Error al limpiar sesiones:', err.message);
+    }
+}
+
+// Ejecutar limpieza cada 15 minutos
+setInterval(limpiarSesionesAntiguas, 15 * 60 * 1000);
+// Ejecutar una vez al arrancar para limpiar lo acumulado
+setTimeout(limpiarSesionesAntiguas, 5000);
 
 // Ruta de emergencia para servir el frontend (Atrapa cualquier ruta no definida)
 app.use((req, res) => {

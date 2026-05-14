@@ -525,7 +525,8 @@ function renderObras() {
                 <td>${fmt.format(parseFloat(o.monto_contrato || o.presupuesto_total || 0))}</td>
                 <td>${fmt.format(parseFloat(o.total_gastado) || 0)}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline" onclick='mostrarFormObraByIndex(${index})'><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-outline" onclick='mostrarFormObraByIndex(${index})' title="Editar"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarRegistro('obras', ${o.id_obra}, renderObras)" title="Eliminar"><i class="fas fa-trash"></i></button>
                 </td>
             </tr>
         `).join('');
@@ -571,7 +572,8 @@ function renderGastos() {
                     <td>${g.proveedor_nombre || 'N/A'}</td>
                     <td><strong>${fmt.format(g.monto_total || 0)}</strong></td>
                     <td>
-                        <button class="btn btn-sm btn-outline" onclick='mostrarFormGastoByIndex(${index})'><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-outline" onclick='mostrarFormGastoByIndex(${index})' title="Editar"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-danger" onclick="eliminarRegistro('gastos', ${g.id_gasto}, renderGastos)" title="Eliminar"><i class="fas fa-trash"></i></button>
                     </td>
                 </tr>`;
         }).join('');
@@ -1264,8 +1266,11 @@ function renderInventario(tipo = 'materiales') {
                         <td>${m.stock_minimo}</td>
                         <td>${fmt.format(m.costo_promedio)}</td>
                         <td>
-                            <button class="btn-icon" onclick="mostrarFormMaterialByIndex(${index})">
+                            <button class="btn-icon" onclick="mostrarFormMaterialByIndex(${index})" title="Editar">
                                 <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn-icon btn-danger-icon" onclick="eliminarRegistro('inventario/materiales', ${m.id_material}, renderInventario)" title="Eliminar">
+                                <i class="fas fa-trash"></i>
                             </button>
                         </td>
                     </tr>
@@ -1297,8 +1302,11 @@ function renderInventario(tipo = 'materiales') {
                     </span>
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-outline" onclick='mostrarFormMaquinariaByIndex(${index})'>
+                    <button class="btn btn-sm btn-outline" onclick='mostrarFormMaquinariaByIndex(${index})' title="Editar">
                         <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarRegistro('inventario/maquinaria', ${m.id_maquinaria}, () => renderInventario('maquinaria'))" title="Eliminar">
+                        <i class="fas fa-trash"></i>
                     </button>
                 </td>
             </tr>
@@ -1516,7 +1524,8 @@ function renderPersonal() {
                     </div>
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-outline" onclick='mostrarFormPersonalByIndex(${index})'><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-outline" onclick='mostrarFormPersonalByIndex(${index})' title="Editar"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarRegistro('personal', ${e.id_trabajador}, renderPersonal)" title="Eliminar"><i class="fas fa-trash"></i></button>
                 </td>
             </tr>
         `).join('');
@@ -1641,8 +1650,11 @@ function renderProveedores() {
                 <td>${p.categoria_proveedor || 'General'}</td>
                 <td>${p.telefono}</td>
                 <td>
-                    <button class="btn-icon" onclick="prepararEdicionProveedor(${index})">
+                    <button class="btn-icon" onclick="prepararEdicionProveedor(${index})" title="Editar">
                         <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn-icon btn-danger-icon" onclick="eliminarRegistro('proveedores', ${p.id_proveedor}, renderProveedores)" title="Eliminar">
+                        <i class="fas fa-trash"></i>
                     </button>
                 </td>
             </tr>
@@ -1913,7 +1925,11 @@ async function renderMisReservas() {
                 <td><strong>${r.nombre_material}</strong></td>
                 <td>${r.cantidad}</td>
                 <td>${fmt.format(r.precio_total)}</td>
-                <td><span class="badge" style="background:#f1c40f; color:#000;">${r.estado}</span></td>
+                <td>
+                    <span class="badge" style="background:${r.estado && r.estado.toLowerCase() === 'entregado' ? '#e74c3c' : '#f1c40f'}; color:${r.estado && r.estado.toLowerCase() === 'entregado' ? 'white' : 'black'};">
+                        ${r.estado}
+                    </span>
+                </td>
             </tr>
         `).join('');
     } catch (err) {
@@ -1962,7 +1978,11 @@ async function renderPedidosAdmin() {
                 <td>${p.producto_nombre}</td>
                 <td>${p.cantidad}</td>
                 <td><strong>${fmt.format(p.precio_total)}</strong></td>
-                <td><span class="status-badge ${p.estado.toLowerCase()}">${p.estado}</span></td>
+                <td>
+                    <span class="status-badge" style="background:${p.estado && p.estado.toLowerCase() === 'entregado' ? '#e74c3c' : (p.estado && p.estado.toLowerCase() === 'pendiente' ? '#f1c40f' : '#3498db')}; color:white;">
+                        ${p.estado}
+                    </span>
+                </td>
             </tr>
         `).join('');
     });
@@ -2123,7 +2143,7 @@ async function renderTareasAlmacenero() {
     try {
         const res = await fetch('/api/reservas');
         const reservas = await res.json();
-        const pendientes = reservas.filter(r => r.estado === 'Pendiente');
+        const pendientes = reservas.filter(r => r.estado && r.estado.toLowerCase() === 'pendiente');
 
         container.innerHTML = `
             <div class="card">
@@ -2131,7 +2151,7 @@ async function renderTareasAlmacenero() {
                     <h3><i class="fas fa-shipping-fast"></i> Despacho de Pedidos Pendientes</h3>
                     <span class="badge badge-danger">${pendientes.length} Pedidos</span>
                 </div>
-                ${pendientes.length === 0 ? '<p>No hay despachos pendientes.</p>' : `
+                ${pendientes.length === 0 ? '<p style="text-align:center; padding:30px; color:#999;">No hay despachos pendientes.</p>' : `
                     <table>
                         <thead>
                             <tr>
@@ -2150,8 +2170,8 @@ async function renderTareasAlmacenero() {
                                     <td>${r.producto_nombre}</td>
                                     <td>${r.cantidad}</td>
                                     <td>
-                                        <button class="btn btn-sm btn-primary" onclick="showToast('Pedido despachado y stock actualizado')">
-                                            Entregar
+                                        <button class="btn btn-sm btn-primary" onclick="entregarPedido(${r.id_reserva})">
+                                            <i class="fas fa-check"></i> Marcar como Entregado
                                         </button>
                                     </td>
                                 </tr>
@@ -2224,6 +2244,32 @@ async function renderTareasIngeniero() {
         `;
     } catch (err) {
         container.innerHTML = '<div class="alert alert-danger">Error al cargar reportes</div>';
+    }
+}
+
+// Función para que el almacenero entregue el pedido
+async function entregarPedido(idReserva) {
+    console.log('[DEBUG CLIENTE] Intentando entregar pedido ID:', idReserva);
+    if (!confirm('¿Confirmar que el pedido ha sido entregado al cliente?')) return;
+    
+    try {
+        const res = await fetch(`/api/reservas/${idReserva}/estado`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: 'Entregado' })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok && data.rowsAffected > 0) {
+            showToast('✓ Pedido marcado como ENTREGADO');
+            renderMisTareas(); // Recargar la lista de tareas del almacenero
+        } else {
+            showToast('No se encontró el pedido o ya fue actualizado', 'warning');
+            renderMisTareas();
+        }
+    } catch (err) {
+        showToast('Error de conexión', 'error');
     }
 }
 // ---------------------------------------------------------
@@ -2381,4 +2427,26 @@ function responderMensaje(idReceptor, asuntoOriginal) {
             showToast('Error al enviar respuesta', 'error');
         }
     };
+}
+
+// Función genérica para eliminar registros
+async function eliminarRegistro(endpoint, id, callback) {
+    if (!confirm('¿Está seguro de que desea eliminar este registro? Esta acción no se puede deshacer.')) return;
+    
+    try {
+        const response = await fetch(`/api/${endpoint}/${id}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showToast('✓ Registro eliminado correctamente');
+            if (callback) callback();
+        } else {
+            const error = await response.json();
+            showToast(error.error || 'No se pudo eliminar el registro', 'error');
+        }
+    } catch (err) {
+        console.error('Error al eliminar:', err);
+        showToast('Error de conexión con el servidor', 'error');
+    }
 }

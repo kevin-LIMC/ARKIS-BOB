@@ -482,3 +482,10 @@ tr:hover {
 .toast-success i { color: var(--success); }
 .toast-error i { color: var(--danger); }
 
+/* ESTILOS DE ELIMINACIÓN */
+.btn-danger { background-color: var(--danger); color: white; border: none; }
+.btn-danger:hover { background-color: #c0392b; opacity: 0.9; }
+.btn-icon.btn-danger-icon { color: var(--danger) !important; }
+.btn-icon.btn-danger-icon:hover { color: #c0392b !important; }
+.btn-sm { padding: 5px 10px; font-size: 0.8rem; }
+
