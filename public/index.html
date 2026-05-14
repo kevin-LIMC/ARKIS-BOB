@@ -78,23 +78,34 @@
                 <p>Control de Obras</p>
             </div>
             <nav class="sidebar-menu">
+                <div class="menu-category" id="cat_principal">Principal</div>
                 <a href="#" class="menu-item active" data-page="dashboard">
                     <i class="fas fa-th-large"></i> Dashboard
                 </a>
+                <a href="#" class="menu-item hidden" data-page="tareas">
+                    <i class="fas fa-tasks"></i> Mis Tareas
+                </a>
+                <a href="#" class="menu-item" data-page="alertas">
+                    <i class="fas fa-bell"></i> Alertas
+                </a>
+
+                <div class="menu-category" id="cat_operaciones">Operaciones</div>
                 <a href="#" class="menu-item" data-page="obras">
                     <i class="fas fa-hard-hat"></i> Obras
-                </a>
-                <a href="#" class="menu-item" data-page="gastos">
-                    <i class="fas fa-file-invoice-dollar"></i> Gastos
                 </a>
                 <a href="#" class="menu-item" data-page="presupuesto">
                     <i class="fas fa-chart-pie"></i> Presupuesto
                 </a>
+                <a href="#" class="menu-item" data-page="personal">
+                    <i class="fas fa-users"></i> Personal
+                </a>
                 <a href="#" class="menu-item" data-page="inventario">
                     <i class="fas fa-boxes"></i> Inventario
                 </a>
-                <a href="#" class="menu-item" data-page="personal">
-                    <i class="fas fa-users"></i> Personal
+
+                <div class="menu-category" id="cat_finanzas">Finanzas</div>
+                <a href="#" class="menu-item" data-page="gastos">
+                    <i class="fas fa-file-invoice-dollar"></i> Gastos
                 </a>
                 <a href="#" class="menu-item" data-page="proveedores">
                     <i class="fas fa-truck"></i> Proveedores
@@ -102,19 +113,23 @@
                 <a href="#" class="menu-item" data-page="reportes">
                     <i class="fas fa-file-alt"></i> Reportes
                 </a>
-                <a href="#" class="menu-item" data-page="alertas">
-                    <i class="fas fa-bell"></i> Alertas
-                </a>
-                <a href="#" class="menu-item" data-page="usuarios">
-                    <i class="fas fa-cog"></i> Usuarios
-                </a>
                 <a href="#" class="menu-item" data-page="pedidos">
                     <i class="fas fa-shopping-basket"></i> Pedidos
+                </a>
+
+                <div class="menu-category" id="cat_sistema">Sistema</div>
+                <a href="#" class="menu-item" data-page="usuarios">
+                    <i class="fas fa-cog"></i> Usuarios
                 </a>
                 <a href="#" class="menu-item" data-page="monitoreo">
                     <i class="fas fa-display"></i> Monitoreo
                 </a>
+                <a href="#" class="menu-item" data-page="mensajes">
+                    <i class="fas fa-envelope"></i> Mensajes <span id="msg_counter" class="badge badge-danger hidden">0</span>
+                </a>
+
                 <!-- Opciones para Clientes -->
+                <div class="menu-category hidden" id="cat_cliente">Cliente</div>
                 <a href="#" class="menu-item hidden" data-page="catalogo">
                     <i class="fas fa-shopping-bag"></i> Catálogo
                 </a>
@@ -122,6 +137,7 @@
                     <i class="fas fa-calendar-check"></i> Mis Reservas
                 </a>
             </nav>
+
             <div class="sidebar-footer">
                 <a href="#" id="btnLogout" class="menu-item">
                     <i class="fas fa-sign-out-alt"></i> Cerrar Sesión

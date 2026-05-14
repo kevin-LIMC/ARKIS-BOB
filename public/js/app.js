@@ -162,7 +162,7 @@ function iniciarRastreoActividad() {
 
 function aplicarPermisos() {
     if (!usuarioActual) return;
-    const permisos = usuarioActual.permisos;
+    const permisos = usuarioActual.permisos || "";
     const esAdmin = permisos === '*';
 
     document.querySelectorAll('.menu-item').forEach(item => {
@@ -176,16 +176,57 @@ function aplicarPermisos() {
 
         // Lógica de visibilidad para páginas específicas
         let visible = false;
+        const nombreRol = usuarioActual.nombre_rol;
+
         if (esAdmin) {
-            visible = !['catalogo', 'mis_reservas'].includes(page);
+            // El admin no necesita catálogo, reservas ni las tareas operativas individuales
+            visible = !['catalogo', 'mis_reservas', 'tareas'].includes(page);
         } else {
-            visible = permisos.split(',').includes(page);
+            // Regla especial: solo roles específicos ven tareas y mensajes
+            if (page === 'tareas') {
+                visible = ['Supervisor', 'Almacenero', 'Ingeniero', 'Contador'].includes(nombreRol);
+            } else if (page === 'mensajes') {
+                visible = ['Contador', 'Supervisor'].includes(nombreRol);
+            } else {
+                visible = permisos.split(',').includes(page);
+            }
         }
 
         if (visible) item.classList.remove('hidden');
         else item.classList.add('hidden');
     });
+
+    // Ocultar categorías vacías
+    const categorias = [
+        { id: 'cat_principal', pages: ['dashboard', 'alertas'] },
+        { id: 'cat_operaciones', pages: ['obras', 'presupuesto', 'personal', 'inventario'] },
+        { id: 'cat_finanzas', pages: ['gastos', 'proveedores', 'reportes', 'pedidos'] },
+        { id: 'cat_sistema', pages: ['usuarios', 'monitoreo', 'mensajes'] },
+        { id: 'cat_cliente', pages: ['catalogo', 'mis_reservas'] }
+    ];
+
+    categorias.forEach(cat => {
+        const header = document.getElementById(cat.id);
+        if (!header) return;
+
+        let algunaVisible = false;
+        if (esAdmin) {
+            // El admin ve todo excepto las de cliente
+            algunaVisible = cat.id !== 'cat_cliente';
+        } else {
+            // Regla especial para categoría sistema (mensajes)
+            if (cat.id === 'cat_sistema' && ['Contador', 'Supervisor'].includes(nombreRol)) {
+                algunaVisible = true;
+            } else {
+                algunaVisible = cat.pages.some(p => permisos.split(',').includes(p));
+            }
+        }
+
+        if (algunaVisible) header.classList.remove('hidden');
+        else header.classList.add('hidden');
+    });
 }
+
 
 function abrirModal(titulo, html) {
     document.getElementById('modalTitle').textContent = titulo;
@@ -260,6 +301,11 @@ async function navegarA(pagina) {
             subtitle.textContent = 'Configuración de usuarios y roles';
             renderUsuarios();
             break;
+        case 'tareas':
+            title.textContent = 'Mis Tareas Pendientes';
+            subtitle.textContent = 'Actividades críticas asignadas a su rol';
+            renderMisTareas();
+            break;
         case 'catalogo':
             title.textContent = 'Catálogo de Materiales';
             subtitle.textContent = 'Explore y reserve los materiales disponibles';
@@ -280,6 +326,11 @@ async function navegarA(pagina) {
             subtitle.textContent = 'Rastreo en tiempo real de usuarios y sesiones';
             renderMonitoreo();
             break;
+        case 'mensajes':
+            title.textContent = 'Buzón de Mensajes';
+            subtitle.textContent = 'Comunicación interna y soporte a clientes';
+            renderBuzonMensajes();
+            break;
         default:
             area.innerHTML = `<h3>Sección ${pagina} en construcción</h3>`;
     }
@@ -290,6 +341,10 @@ async function navegarA(pagina) {
 // ---------------------------------------------------------
 
 async function renderDashboard() {
+    if (usuarioActual.nombre_rol === 'Cliente') {
+        return renderDashboardCliente();
+    }
+
     const area = document.getElementById('contentArea');
     area.innerHTML = `
         <div class="stats-grid">
@@ -319,6 +374,127 @@ async function renderDashboard() {
     setTimeout(() => { initCharts(); }, 150);
 }
 
+async function renderDashboardCliente() {
+    const area = document.getElementById('contentArea');
+    
+    area.innerHTML = `
+        <div class="card" style="background: linear-gradient(135deg, var(--primary-color) 0%, #2c3e50 100%); color:white; padding:40px; margin-bottom:30px; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h1 style="font-size:2.2rem; margin-bottom:10px;">¡Hola, ${usuarioActual.nombre_completo}!</h1>
+                    <p style="opacity:0.9; font-size:1.1rem;">Bienvenido a tu panel de BobConstruye. Desde aquí puedes gestionar tus pedidos de materiales.</p>
+                </div>
+                <div style="font-size:4rem; opacity:0.2;"><i class="fas fa-user-circle"></i></div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="card stat-card" style="cursor:pointer;" onclick="document.querySelector('[data-page=catalogo]').click()">
+                <div class="stat-info">
+                    <div class="label">Explorar Materiales</div>
+                    <div class="value">Catálogo</div>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:5px;">Ver precios y stock actual</p>
+                </div>
+                <div class="stat-icon" style="background:#e8f5e9; color:#27ae60;"><i class="fas fa-shopping-cart"></i></div>
+            </div>
+            
+            <div class="card stat-card" style="cursor:pointer;" onclick="document.querySelector('[data-page=mis_reservas]').click()">
+                <div class="stat-info">
+                    <div class="label">Estado de Pedidos</div>
+                    <div class="value" id="client_orders_count">...</div>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:5px;">Reservas realizadas</p>
+                </div>
+                <div class="stat-icon" style="background:#e3f2fd; color:#2196f3;"><i class="fas fa-box"></i></div>
+            </div>
+
+            <div class="card stat-card" style="cursor:pointer;" onclick="mostrarModalSoporte()">
+                <div class="stat-info">
+                    <div class="label">Soporte</div>
+                    <div class="value">Ayuda</div>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:5px;">Contacto directo con ventas</p>
+                </div>
+                <div class="stat-icon" style="background:#fff3e0; color:#e67e22;"><i class="fas fa-headset"></i></div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:30px;">
+            <h3>Últimas Novedades</h3>
+            <p style="color:var(--text-secondary); margin-bottom:20px;">Mantente al día con los nuevos ingresos al almacén.</p>
+            <div id="novedadesContent" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:15px;">
+                <!-- Se llenará con materiales destacados -->
+            </div>
+        </div>
+    `;
+
+    // Cargar conteo de reservas del cliente
+    try {
+        const res = await fetch('/api/reservas');
+        const reservas = await res.json();
+        // Filtrar por el nombre del cliente (como aproximación)
+        const misReservas = reservas.filter(r => r.cliente === usuarioActual.nombre_completo);
+        document.getElementById('client_orders_count').textContent = misReservas.length;
+    } catch (err) {
+        document.getElementById('client_orders_count').textContent = '0';
+    }
+
+    // Cargar algunos materiales como "novedades"
+    try {
+        const res = await fetch('/api/inventario/materiales');
+        const materiales = await res.json();
+        const novedades = materiales.slice(0, 4);
+        document.getElementById('novedadesContent').innerHTML = novedades.map(m => `
+            <div style="background:#f8f9fa; border-radius:8px; padding:10px; text-align:center;">
+                <img src="${m.imagen_url || 'https://via.placeholder.com/150'}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:10px;">
+                <div style="font-weight:bold; font-size:0.9rem;">${m.nombre_material}</div>
+                <div style="color:var(--accent-color); font-weight:700;">${fmt.format(m.precio_venta)}</div>
+            </div>
+        `).join('');
+    } catch (err) {}
+}
+
+function mostrarModalSoporte() {
+    const html = `
+        <div style="text-align:center; padding:10px;">
+            <div style="width:70px; height:70px; background:#fef5e7; color:#e67e22; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2rem; margin: 0 auto 20px;">
+                <i class="fas fa-headset"></i>
+            </div>
+            <h3 style="margin-bottom:10px;">¿Necesitas ayuda con tu pedido?</h3>
+            <p style="color:var(--text-secondary); margin-bottom:25px;">Nuestro equipo de ventas está disponible para ayudarte con cualquier duda técnica o comercial.</p>
+            
+            <div style="display:grid; gap:15px; text-align:left;">
+                <a href="https://wa.me/51999999999?text=Hola,%20necesito%20ayuda%20con%20mi%20pedido%20en%20BobConstruye" target="_blank" style="display:flex; align-items:center; gap:15px; padding:15px; background:#e8f5e9; color:#27ae60; text-decoration:none; border-radius:10px; font-weight:600; border:1px solid #c8e6c9;">
+                    <i class="fab fa-whatsapp fa-2x"></i>
+                    <div>
+                        <div style="font-size:0.8rem; opacity:0.8;">Contactar por WhatsApp</div>
+                        <div>+51 999 999 999</div>
+                    </div>
+                </a>
+
+                <a href="mailto:ventas@bobconstruye.com" style="display:flex; align-items:center; gap:15px; padding:15px; background:#e3f2fd; color:#2196f3; text-decoration:none; border-radius:10px; font-weight:600; border:1px solid #bbdefb;">
+                    <i class="fas fa-envelope fa-2x"></i>
+                    <div>
+                        <div style="font-size:0.8rem; opacity:0.8;">Enviar un Correo</div>
+                        <div>ventas@bobconstruye.com</div>
+                    </div>
+                </a>
+
+                <button onclick="abrirChatSoporte()" style="width:100%; display:flex; align-items:center; gap:15px; padding:15px; background:#f3e5f5; color:#7b1fa2; border:1px solid #e1bee7; border-radius:10px; cursor:pointer; font-weight:600; font-family:inherit; text-align:left;">
+                    <i class="fas fa-ticket-alt fa-2x"></i>
+                    <div>
+                        <div style="font-size:0.8rem; opacity:0.8;">Sistema de Tickets</div>
+                        <div>Escribir mensaje interno</div>
+                    </div>
+                </button>
+            </div>
+
+            <p style="font-size:0.75rem; color:#aaa; margin-top:25px;">Horario de atención: Lun a Vie de 8:00 AM a 6:00 PM</p>
+        </div>
+    `;
+    abrirModal('Centro de Atención al Cliente', html);
+}
+
+
+
 function renderObras() {
     const area = document.getElementById('contentArea');
     area.innerHTML = `
@@ -333,24 +509,30 @@ function renderObras() {
             </table>
         </div>
     `;
-    document.getElementById('btnNuevaObra').onclick = mostrarFormObra;
+    document.getElementById('btnNuevaObra').onclick = () => mostrarFormObra(null);
+    window._obrasCache = [];
     
     fetch('/api/obras').then(r => r.json()).then(obras => {
+        window._obrasCache = obras;
         const tbody = document.getElementById('listaObras');
-        tbody.innerHTML = obras.map(o => `
+        tbody.innerHTML = obras.map((o, index) => `
             <tr>
                 <td>${o.codigo_obra}</td>
                 <td><strong>${o.nombre_proyecto}</strong></td>
-                <td>${o.ubicacion_exacta || '-'}</td>
-                <td>${fmt.format(o.presupuesto_total || 0)}</td>
-                <td>${fmt.format(o.total_gastado || 0)}</td>
+                <td>${o.direccion || '-'}</td>
+                <td>${fmt.format(parseFloat(o.monto_contrato || o.presupuesto_total || 0))}</td>
+                <td>${fmt.format(parseFloat(o.total_gastado) || 0)}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline" onclick='mostrarFormObra(${JSON.stringify(o)})'><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-outline" onclick='mostrarFormObraByIndex(${index})'><i class="fas fa-edit"></i></button>
                 </td>
             </tr>
         `).join('');
     });
 }
+
+window.mostrarFormObraByIndex = (index) => {
+    mostrarFormObra(window._obrasCache[index]);
+};
 
 function renderGastos() {
     const area = document.getElementById('contentArea');
@@ -366,16 +548,18 @@ function renderGastos() {
             </table>
         </div>
     `;
-    document.getElementById('btnNuevoGasto').onclick = mostrarFormGasto;
+    document.getElementById('btnNuevoGasto').onclick = () => mostrarFormGasto(null);
+    window._gastosCache = [];
 
     fetch('/api/gastos').then(r => r.json()).then(gastos => {
+        window._gastosCache = gastos;
         const tbody = document.getElementById('listaGastos');
         if(!tbody) return;
         if (gastos.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">No hay gastos registrados</td></tr>';
             return;
         }
-        tbody.innerHTML = gastos.map(g => {
+        tbody.innerHTML = gastos.map((g, index) => {
             const fecha = g.fecha_gasto ? new Date(g.fecha_gasto).toLocaleDateString() : '-';
             return `
                 <tr>
@@ -385,12 +569,16 @@ function renderGastos() {
                     <td>${g.proveedor_nombre || 'N/A'}</td>
                     <td><strong>${fmt.format(g.monto_total || 0)}</strong></td>
                     <td>
-                        <button class="btn btn-sm btn-outline" onclick='mostrarFormGasto(${JSON.stringify(g)})'><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-outline" onclick='mostrarFormGastoByIndex(${index})'><i class="fas fa-edit"></i></button>
                     </td>
                 </tr>`;
         }).join('');
     });
 }
+
+window.mostrarFormGastoByIndex = (index) => {
+    mostrarFormGasto(window._gastosCache[index]);
+};
 
 function renderPresupuesto() {
     const area = document.getElementById('contentArea');
@@ -590,8 +778,9 @@ function mostrarFormObra(obra = null) {
     const html = `
         <form id="formObra">
             <div class="form-group-modal"><label>Proyecto</label><input type="text" id="fn_nom" required value="${isEdit ? obra.nombre_proyecto : ''}"></div>
-            <div class="form-group-modal"><label>Código</label><input type="text" id="fn_cod" required value="${isEdit ? obra.codigo_obra : ''}"></div>
-            <div class="form-group-modal"><label>Presupuesto</label><input type="number" id="fn_mon" required value="${isEdit ? (obra.presupuesto_total || obra.monto_contrato) : ''}"></div>
+            <div class="form-group-modal"><label>Código de Obra</label><input type="text" id="fn_cod" required placeholder="Ej: OB-001" value="${isEdit ? (obra.codigo_obra || '') : ''}"></div>
+            <div class="form-group-modal"><label>Ubicación / Dirección</label><input type="text" id="fn_ubc" placeholder="Dirección de la obra" value="${isEdit ? (obra.direccion || '') : ''}"></div>
+            <div class="form-group-modal"><label>Presupuesto / Monto Contrato</label><input type="number" id="fn_mon" required step="0.01" placeholder="0.00" value="${isEdit ? (obra.monto_contrato || obra.presupuesto_total || 0) : ''}"></div>
             <button class="btn btn-primary btn-block">${isEdit ? 'Actualizar' : 'Guardar'} Obra</button>
         </form>
     `;
@@ -601,6 +790,7 @@ function mostrarFormObra(obra = null) {
         const data = {
             nombre_proyecto: document.getElementById('fn_nom').value,
             codigo_obra: document.getElementById('fn_cod').value,
+            direccion: document.getElementById('fn_ubc').value,
             monto_contrato: document.getElementById('fn_mon').value,
             id_cliente: obra?.id_cliente || 1, 
             id_tipo_obra: obra?.id_tipo_obra || 1, 
@@ -688,7 +878,7 @@ function mostrarFormGasto(gasto = null) {
             id_proveedor: document.getElementById('fg_pro').value,
             concepto: document.getElementById('fg_con').value,
             monto_total: document.getElementById('fg_mon').value,
-            fecha_gasto: isEdit ? (gasto.fecha_gasto.split('T')[0]) : new Date().toISOString().split('T')[0],
+            fecha_gasto: isEdit ? (gasto.fecha_gasto ? gasto.fecha_gasto.split('T')[0] : new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
             numero_factura: isEdit ? gasto.numero_factura : ('TMP-' + Date.now()), 
             id_forma_pago: isEdit ? gasto.id_forma_pago : 1, 
             estado_gasto: isEdit ? gasto.estado_gasto : 'REGISTRADO'
@@ -802,10 +992,12 @@ function renderUsuarios() {
         </div>
     `;
     
-    document.getElementById('btnNuevoUsuario').onclick = mostrarFormUsuario;
+    document.getElementById('btnNuevoUsuario').onclick = () => mostrarFormUsuario(null);
+    window._usuariosCache = [];
     
     // Cargar lista de usuarios
     fetch('/api/usuarios').then(r => r.json()).then(data => {
+        window._usuariosCache = data;
         const tbody = document.getElementById('listaUsuarios');
         if (data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#666;">No hay usuarios registrados</td></tr>';
@@ -823,10 +1015,14 @@ function renderUsuarios() {
                         ? '<span style="color:green; font-weight:bold;">● Activo</span>' 
                         : '<span style="color:red; font-weight:bold;">● Inactivo</span>'}
                 </td>
-                <td>
+                <td style="display:flex; gap:5px;">
+                    <button class="btn btn-sm btn-outline" onclick='mostrarFormUsuarioByIndex(${index})' title="Editar Usuario">
+                        <i class="fas fa-edit"></i>
+                    </button>
                     <button class="btn btn-sm" onclick="activarDesactivarUsuario(${u.id_usuario}, ${!u.activo})" 
-                        style="background:${u.activo ? '#e74c3c' : '#27ae60'}; color:white; padding:6px 12px; border:none; cursor:pointer; border-radius:3px;">
-                        ${u.activo ? '<i class="fas fa-ban"></i> Desactivar' : '<i class="fas fa-check"></i> Activar'}
+                        style="background:${u.activo ? '#e74c3c' : '#27ae60'}; color:white; padding:6px 12px; border:none; cursor:pointer; border-radius:3px;"
+                        title="${u.activo ? 'Desactivar' : 'Activar'}">
+                        ${u.activo ? '<i class="fas fa-ban"></i>' : '<i class="fas fa-check"></i>'}
                     </button>
                 </td>
             </tr>
@@ -836,6 +1032,10 @@ function renderUsuarios() {
         document.getElementById('listaUsuarios').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error al cargar usuarios</td></tr>';
     });
 }
+
+window.mostrarFormUsuarioByIndex = (index) => {
+    mostrarFormUsuario(window._usuariosCache[index]);
+};
 
 async function activarDesactivarUsuario(idUsuario, nuevoEstado) {
     try {
@@ -857,25 +1057,27 @@ async function activarDesactivarUsuario(idUsuario, nuevoEstado) {
     }
 }
 
-function mostrarFormUsuario() {
+function mostrarFormUsuario(u = null) {
+    const isEdit = u !== null;
     const html = `
         <form id="formUsuario">
             <div class="form-group-modal">
                 <label><i class="fas fa-user"></i> Nombre de Usuario (login)</label>
                 <input type="text" id="fu_user" required placeholder="ej: juan_ing" 
-                    pattern="[a-zA-Z0-9_]+" title="Solo letras, números y guiones bajos">
+                    pattern="[a-zA-Z0-9_]+" title="Solo letras, números y guiones bajos"
+                    value="${isEdit ? u.username : ''}">
             </div>
             <div class="form-group-modal">
-                <label><i class="fas fa-lock"></i> Contraseña</label>
-                <input type="password" id="fu_pass" required placeholder="Mínimo 8 caracteres" minlength="8">
+                <label><i class="fas fa-lock"></i> Contraseña ${isEdit ? '(dejar en blanco para no cambiar)' : ''}</label>
+                <input type="password" id="fu_pass" ${isEdit ? '' : 'required'} placeholder="${isEdit ? '********' : 'Mínimo 8 caracteres'}" minlength="8">
             </div>
             <div class="form-group-modal">
                 <label><i class="fas fa-id-card"></i> Nombre Completo</label>
-                <input type="text" id="fu_nombre" required placeholder="ej: Juan García Pérez">
+                <input type="text" id="fu_nombre" required placeholder="ej: Juan García Pérez" value="${isEdit ? u.nombre_completo : ''}">
             </div>
             <div class="form-group-modal">
                 <label><i class="fas fa-envelope"></i> Correo Electrónico</label>
-                <input type="email" id="fu_email" required placeholder="ej: juan@ejemplo.com">
+                <input type="email" id="fu_email" required placeholder="ej: juan@ejemplo.com" value="${isEdit ? u.correo : ''}">
             </div>
             <div class="form-group-modal">
                 <label><i class="fas fa-briefcase"></i> Rol (Nivel de Acceso)</label>
@@ -883,11 +1085,25 @@ function mostrarFormUsuario() {
                     <option value="">Cargando roles...</option>
                 </select>
             </div>
-            <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-save"></i> Crear Usuario</button>
+            
+            ${!isEdit ? `
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #eee;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:bold;">
+                    <input type="checkbox" id="fu_is_worker"> ¿Es trabajador? (Crear perfil en Personal)
+                </label>
+                <div id="worker_fields" class="hidden" style="margin-top:10px;">
+                    <div class="form-group-modal"><label>DNI</label><input type="text" id="fu_dni" placeholder="DNI del trabajador"></div>
+                    <div class="form-group-modal"><label>Puesto</label><input type="text" id="fu_puesto" placeholder="Ej: Maestro de Obra"></div>
+                    <div class="form-group-modal"><label>Tarifa Hora</label><input type="number" id="fu_tarifa" value="0"></div>
+                </div>
+            </div>
+            ` : ''}
+
+            <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-save"></i> ${isEdit ? 'Actualizar' : 'Crear'} Usuario</button>
         </form>
     `;
     
-    abrirModal('Registrar Nuevo Usuario', html);
+    abrirModal(isEdit ? 'Editar Usuario' : 'Registrar Nuevo Usuario', html);
     
     // Cargar roles disponibles
     fetch('/api/roles').then(r => r.json()).then(roles => {
@@ -897,13 +1113,22 @@ function mostrarFormUsuario() {
             const opt = document.createElement('option');
             opt.value = rol.id_rol;
             opt.textContent = rol.nombre_rol;
+            if (isEdit && rol.id_rol === u.id_rol) opt.selected = true;
             sel.appendChild(opt);
         });
     }).catch(err => {
         console.error('Error cargando roles:', err);
         document.getElementById('fu_rol').innerHTML = '<option value="">Error al cargar roles</option>';
     });
+
     
+    // Manejar toggle de campos de trabajador (solo si no es edición)
+    if (!isEdit) {
+        document.getElementById('fu_is_worker').onchange = (e) => {
+            document.getElementById('worker_fields').classList.toggle('hidden', !e.target.checked);
+        };
+    }
+
     // Manejar submit del formulario
     document.getElementById('formUsuario').onsubmit = async (e) => {
         e.preventDefault();
@@ -914,44 +1139,57 @@ function mostrarFormUsuario() {
         const email = document.getElementById('fu_email').value.trim();
         const idRol = document.getElementById('fu_rol').value;
         
+        const esTrabajador = !isEdit && document.getElementById('fu_is_worker').checked;
+        const dni = !isEdit ? document.getElementById('fu_dni').value.trim() : null;
+        const puesto = !isEdit ? document.getElementById('fu_puesto').value.trim() : null;
+        const tarifa = !isEdit ? document.getElementById('fu_tarifa').value : 0;
+
         // Validaciones
-        if (!usuario || !password || !nombre || !email || !idRol) {
+        if (!usuario || !nombre || !email || !idRol) {
             showToast('Completa todos los campos requeridos', 'error');
             return;
         }
         
-        if (password.length < 8) {
-            showToast('La contraseña debe tener al menos 8 caracteres', 'error');
+        if (!isEdit && !password) {
+            showToast('La contraseña es requerida para nuevos usuarios', 'error');
             return;
         }
-        
+
         try {
-            const response = await fetch('/api/usuarios', {
-                method: 'POST',
+            const method = isEdit ? 'PUT' : 'POST';
+            const url = isEdit ? `/api/usuarios/${u.id_usuario}` : '/api/usuarios';
+            
+            const response = await fetch(url, {
+                method: method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     username: usuario,
-                    password: password,
+                    password: password, // Si es edición y está vacío, el backend lo ignora
                     nombre_completo: nombre,
                     correo: email,
-                    id_rol: parseInt(idRol)
+                    id_rol: parseInt(idRol),
+                    crear_trabajador: esTrabajador,
+                    dni: dni,
+                    puesto: puesto,
+                    tarifa_hora: parseFloat(tarifa) || 0
                 })
             });
             
             if (response.ok) {
-                const result = await response.json();
                 document.getElementById('modalContainer').classList.add('hidden');
-                showToast('✓ Usuario creado exitosamente. Contraseña encriptada y segura.');
+                showToast(isEdit ? '✓ Usuario actualizado exitosamente' : '✓ Usuario creado exitosamente');
                 renderUsuarios(); // Recargar lista
             } else {
                 const error = await response.json();
-                showToast(error.error || 'Error al registrar usuario', 'error');
+                showToast(error.error || 'Error al procesar usuario', 'error');
             }
         } catch (err) {
             console.error('Error:', err);
             showToast('Error de conexión con el servidor', 'error');
         }
     };
+
+
 }
 
 function showToast(mensaje, tipo = 'success') {
@@ -968,13 +1206,15 @@ function showToast(mensaje, tipo = 'success') {
         setTimeout(() => toast.remove(), 500);
     }, 4000);
 }
-function renderInventario() {
+function renderInventario(tipo = 'materiales') {
+    window._materialesCache = [];
+    window._maquinariaCache = [];
     const area = document.getElementById('contentArea');
     area.innerHTML = `
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                 <div class="tabs-container" style="border-bottom:1px solid #ddd;">
-                    <button class="tab-btn active" id="tabMat" style="padding:10px 20px; cursor:pointer;">Materiales</button>
+                    <button class="tab-btn" id="tabMat" style="padding:10px 20px; cursor:pointer;">Materiales</button>
                     <button class="tab-btn" id="tabMaq" style="padding:10px 20px; cursor:pointer;">Maquinaria</button>
                 </div>
                 <button class="btn btn-primary" id="btnNuevoInv"><i class="fas fa-plus"></i> Nuevo Material</button>
@@ -992,10 +1232,6 @@ function renderInventario() {
     const tabMaq = document.getElementById('tabMaq');
     const btnNuevo = document.getElementById('btnNuevoInv');
 
-    if (btnNuevo) {
-        btnNuevo.onclick = () => mostrarFormMaterial(null);
-    }
-
     const cargarMateriales = () => {
         const tbody = document.getElementById('bodyInv');
         if (!tbody) return;
@@ -1006,15 +1242,13 @@ function renderInventario() {
         fetch('/api/inventario/materiales')
             .then(r => r.json())
             .then(data => {
+                window._materialesCache = data;
                 if(!tbody) return; 
                 if(data.length === 0) { 
                     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No hay materiales registrados</td></tr>'; 
                     return; 
                 }
                 
-                // Guardamos los materiales en una variable global temporal para acceder a ellos sin romper el HTML
-                window._materialesCache = data;
-
                 tbody.innerHTML = data.map((m, index) => `
                     <tr>
                         <td>${m.codigo_material}</td>
@@ -1028,7 +1262,7 @@ function renderInventario() {
                         <td>${m.stock_minimo}</td>
                         <td>${fmt.format(m.costo_promedio)}</td>
                         <td>
-                            <button class="btn-icon" onclick="prepararEdicionMaterial(${index})">
+                            <button class="btn-icon" onclick="mostrarFormMaterialByIndex(${index})">
                                 <i class="fas fa-edit"></i>
                             </button>
                         </td>
@@ -1037,45 +1271,65 @@ function renderInventario() {
             });
     };
 
-    window.prepararEdicionMaterial = (index) => {
-        const material = window._materialesCache[index];
-        mostrarFormMaterial(material);
-    };
-
     const cargarMaquinaria = () => {
         tabMaq.classList.add('active'); tabMat.classList.remove('active');
-        document.getElementById('headInv').innerHTML = '<tr><th>Placa</th><th>Descripción</th><th>Estado</th><th>Tarifa Alquiler</th><th>Acciones</th></tr>';
+        document.getElementById('headInv').innerHTML = '<tr><th>Descripción</th><th>Placa</th><th>Tarifa Alquiler</th><th>Estado</th><th>Acciones</th></tr>';
         fetch('/api/inventario/maquinaria').then(r => r.json()).then(data => {
+            window._maquinariaCache = data;
             const tbody = document.getElementById('bodyInv');
+            if(!tbody) return;
             if(data.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">No hay maquinaria registrada</td></tr>'; return; }
-            tbody.innerHTML = data.map(m => `
-                <tr>
-                    <td>${m.placa_identificacion}</td>
-                    <td><strong>${m.descripcion}</strong></td>
-                    <td><span class="badge">${m.estado_operativo}</span></td>
-                    <td>${fmt.format(m.tarifa_alquiler)}</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline" onclick='mostrarFormMaquinaria(${JSON.stringify(m)})'><i class="fas fa-edit"></i></button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = data.map((m, index) => `
+            <tr>
+                <td>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        ${m.imagen_url ? `<img src="${m.imagen_url}" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">` : `<div style="width:40px; height:40px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:4px;"><i class="fas fa-tractor" style="color:#ccc;"></i></div>`}
+                        <strong>${m.descripcion}</strong>
+                    </div>
+                </td>
+                <td><span class="badge" style="background:#eee; color:#333;">${m.placa_identificacion}</span></td>
+                <td>${fmt.format(m.tarifa_alquiler)}</td>
+                <td>
+                    <span class="badge ${m.estado_operativo === 'Operativo' ? 'badge-success' : 'badge-danger'}">
+                        ${m.estado_operativo}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline" onclick='mostrarFormMaquinariaByIndex(${index})'>
+                        <i class="fas fa-edit"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
         });
     };
-
+    
     tabMat.onclick = () => {
         cargarMateriales();
-        document.getElementById('btnNuevoInv').innerHTML = '<i class="fas fa-plus"></i> Nuevo Material';
-        document.getElementById('btnNuevoInv').onclick = mostrarFormMaterial;
+        btnNuevo.innerHTML = '<i class="fas fa-plus"></i> Nuevo Material';
+        btnNuevo.onclick = () => mostrarFormMaterial(null);
     };
     tabMaq.onclick = () => {
         cargarMaquinaria();
-        document.getElementById('btnNuevoInv').innerHTML = '<i class="fas fa-plus"></i> Nueva Maquinaria';
-        document.getElementById('btnNuevoInv').onclick = mostrarFormMaquinaria;
+        btnNuevo.innerHTML = '<i class="fas fa-plus"></i> Nueva Maquinaria';
+        btnNuevo.onclick = () => mostrarFormMaquinaria(null);
     };
 
-    cargarMateriales(); // Por defecto
-    document.getElementById('btnNuevoInv').onclick = mostrarFormMaterial;
+    if (tipo === 'maquinaria') {
+        tabMaq.click();
+    } else {
+        tabMat.click();
+    }
 }
+
+window.mostrarFormMaterialByIndex = (index) => {
+    mostrarFormMaterial(window._materialesCache[index]);
+};
+
+window.mostrarFormMaquinariaByIndex = (index) => {
+    mostrarFormMaquinaria(window._maquinariaCache[index]);
+};
+
 
 function mostrarFormMaterial(material = null) {
     const isEdit = !!material;
@@ -1147,45 +1401,74 @@ function mostrarFormMaterial(material = null) {
     };
 }
 
-function mostrarFormMaquinaria(maquinaria = null) {
-    const isEdit = maquinaria !== null;
+function mostrarFormMaquinaria(maq = null) {
+    const isEdit = maq !== null;
     const html = `
-        <form id="formMaquinaria">
-            <div class="form-group-modal"><label>Placa / Identificación</label><input type="text" id="fmaq_pla" required placeholder="Ej: ABC-123" value="${isEdit ? maquinaria.placa_identificacion : ''}"></div>
-            <div class="form-group-modal"><label>Descripción</label><input type="text" id="fmaq_des" required value="${isEdit ? maquinaria.descripcion : ''}"></div>
-            <div class="form-group-modal"><label>Tarifa de Alquiler (S/.)</label><input type="number" id="fmaq_tar" required step="0.01" value="${isEdit ? maquinaria.tarifa_alquiler : ''}"></div>
-            <div class="form-group-modal"><label>Estado Operativo</label>
-                <select id="fmaq_est">
-                    <option ${isEdit && maquinaria.estado_operativo === 'OPERATIVO' ? 'selected' : ''}>OPERATIVO</option>
-                    <option ${isEdit && maquinaria.estado_operativo === 'EN MANTENIMIENTO' ? 'selected' : ''}>EN MANTENIMIENTO</option>
-                    <option ${isEdit && maquinaria.estado_operativo === 'REPARACION' ? 'selected' : ''}>REPARACION</option>
-                    <option ${isEdit && maquinaria.estado_operativo === 'BAJA' ? 'selected' : ''}>BAJA</option>
+        <form id="formMaquinaria" enctype="multipart/form-data">
+            <div class="form-group-modal"><label>Descripción / Modelo</label><input type="text" id="fm_des" required value="${isEdit ? maq.descripcion : ''}"></div>
+            <div class="form-group-modal"><label>Placa / Identificación</label><input type="text" id="fm_pla" required value="${isEdit ? maq.placa_identificacion : ''}"></div>
+            <div class="form-group-modal"><label>Tarifa Alquiler (Día)</label><input type="number" id="fm_tar" required value="${isEdit ? maq.tarifa_alquiler : ''}"></div>
+            <div class="form-group-modal">
+                <label>Estado Operativo</label>
+                <select id="fm_est">
+                    <option value="Operativo" ${isEdit && maq.estado_operativo === 'Operativo' ? 'selected' : ''}>Operativo</option>
+                    <option value="En Mantenimiento" ${isEdit && maq.estado_operativo === 'En Mantenimiento' ? 'selected' : ''}>En Mantenimiento</option>
+                    <option value="Fuera de Servicio" ${isEdit && maq.estado_operativo === 'Fuera de Servicio' ? 'selected' : ''}>Fuera de Servicio</option>
                 </select>
+            </div>
+            <div class="form-group-modal">
+                <label><i class="fas fa-image"></i> Fotografía de la Maquinaria</label>
+                <input type="file" id="fm_img" accept="image/*">
+                ${isEdit && maq.imagen_url ? `<p style="font-size:0.8rem; margin-top:5px; color:var(--success);">✓ Ya tiene una imagen cargada</p>` : ''}
             </div>
             <button class="btn btn-primary btn-block">${isEdit ? 'Actualizar' : 'Registrar'} Maquinaria</button>
         </form>
     `;
     abrirModal(isEdit ? 'Editar Maquinaria' : 'Nueva Maquinaria / Equipo', html);
+    
     document.getElementById('formMaquinaria').onsubmit = async (e) => {
         e.preventDefault();
-        const data = {
-            placa_identificacion: document.getElementById('fmaq_pla').value,
-            descripcion: document.getElementById('fmaq_des').value,
-            tarifa_alquiler: document.getElementById('fmaq_tar').value,
-            estado_operativo: document.getElementById('fmaq_est').value
-        };
+        
+        const formData = new FormData();
+        formData.append('descripcion', document.getElementById('fm_des').value);
+        formData.append('placa_identificacion', document.getElementById('fm_pla').value);
+        formData.append('tarifa_alquiler', document.getElementById('fm_tar').value);
+        formData.append('estado_operativo', document.getElementById('fm_est').value);
+        
+        const fileInput = document.getElementById('fm_img');
+        if (fileInput.files[0]) {
+            formData.append('imagen', fileInput.files[0]);
+        } else if (isEdit && maq.imagen_url) {
+            formData.append('imagen_url', maq.imagen_url);
+        }
 
-        const url = isEdit ? `/api/inventario/maquinaria/${maquinaria.id_maquinaria}` : '/api/inventario/maquinaria';
+        const url = isEdit ? `/api/inventario/maquinaria/${maq.id_maquinaria}` : '/api/inventario/maquinaria';
         const method = isEdit ? 'PUT' : 'POST';
 
-        const res = await fetch(url, { method: method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)});
-        if(res.ok) {
-            document.getElementById('modalContainer').classList.add('hidden');
-            showToast(isEdit ? 'Equipo actualizado' : 'Equipo registrado');
-            renderInventario();
+        try {
+            console.log('Enviando maquinaria:', Object.fromEntries(formData));
+            const response = await fetch(url, {
+                method: method,
+                body: formData
+            });
+
+            const result = await response.json().catch(() => ({ error: 'Respuesta no válida del servidor' }));
+
+            if (response.ok) {
+                document.getElementById('modalContainer').classList.add('hidden');
+                showToast(isEdit ? '✓ Maquinaria actualizada' : '✓ Maquinaria registrada');
+                renderInventario(); // Recargar todo el inventario
+            } else {
+                console.error('Error del servidor:', result);
+                showToast(result.error || 'Error al procesar maquinaria', 'error');
+            }
+        } catch (err) {
+            console.error('Error de conexión:', err);
+            showToast('Error de conexión con el servidor', 'error');
         }
     };
 }
+
 
 function renderPersonal() {
     const area = document.getElementById('contentArea');
@@ -1196,21 +1479,23 @@ function renderPersonal() {
                 <button class="btn btn-primary" id="btnNuevoTrabajador"><i class="fas fa-plus"></i> Nuevo Trabajador</button>
             </div>
             <table>
-                <thead><tr><th>DNI</th><th>Nombre Completo</th><th>Puesto</th><th>Especialidad</th><th>Tarifa/Hr</th><th>Teléfono</th><th>Acciones</th></tr></thead>
-                <tbody id="listaPersonal"><tr><td colspan="7" style="text-align:center">Cargando...</td></tr></tbody>
+                <thead><tr><th>DNI</th><th>Nombre Completo</th><th>Puesto</th><th>Especialidad</th><th>Tarifa/Hr</th><th>Teléfono</th><th>Usuario</th><th>Acciones</th></tr></thead>
+                <tbody id="listaPersonal"><tr><td colspan="8" style="text-align:center">Cargando...</td></tr></tbody>
             </table>
         </div>
     `;
-    document.getElementById('btnNuevoTrabajador').onclick = mostrarFormPersonal;
+    document.getElementById('btnNuevoTrabajador').onclick = () => mostrarFormPersonal(null);
+    window._personalCache = [];
 
     fetch('/api/personal').then(r => r.json()).then(empleados => {
+        window._personalCache = empleados;
         const tbody = document.getElementById('listaPersonal');
-        if(!tbody) return; // Protección
+        if(!tbody) return; 
         if(empleados.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No hay personal registrado</td></tr>';
             return;
         }
-        tbody.innerHTML = empleados.map(e => `
+        tbody.innerHTML = empleados.map((e, index) => `
             <tr>
                 <td>${e.dni}</td>
                 <td><strong>${e.nombre_completo}</strong></td>
@@ -1219,12 +1504,26 @@ function renderPersonal() {
                 <td>${fmt.format(e.tarifa_hora)}</td>
                 <td>${e.telefono || '-'}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline" onclick='mostrarFormPersonal(${JSON.stringify(e)})'><i class="fas fa-edit"></i></button>
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <span class="badge" style="background:#3498db; color:white; font-size: 0.7rem;">${e.username || 'Sin vincular'}</span>
+                        ${e.id_usuario ? `
+                            <span style="font-size: 0.65rem; color: ${e.activo_usuario ? 'green' : 'red'}; font-weight: bold;">
+                                ● ${e.activo_usuario ? 'Activo' : 'Inactivo'}
+                            </span>
+                        ` : ''}
+                    </div>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline" onclick='mostrarFormPersonalByIndex(${index})'><i class="fas fa-edit"></i></button>
                 </td>
             </tr>
         `).join('');
     });
 }
+
+window.mostrarFormPersonalByIndex = (index) => {
+    mostrarFormPersonal(window._personalCache[index]);
+};
 
 function mostrarFormPersonal(personal = null) {
     const isEdit = personal !== null;
@@ -1236,10 +1535,36 @@ function mostrarFormPersonal(personal = null) {
             <div class="form-group-modal"><label>Especialidad</label><input type="text" id="fp_esp" value="${isEdit ? (personal.especialidad || '') : ''}"></div>
             <div class="form-group-modal"><label>Tarifa por Hora</label><input type="number" id="fp_tar" required value="${isEdit ? personal.tarifa_hora : ''}"></div>
             <div class="form-group-modal"><label>Teléfono</label><input type="text" id="fp_tel" value="${isEdit ? (personal.telefono || '') : ''}"></div>
+            <div class="form-group-modal">
+                <label><i class="fas fa-user"></i> Vincular Usuario de Sistema</label>
+                <select id="fp_usu">
+                    <option value="">-- No vincular --</option>
+                </select>
+                <small>Permite que este trabajador acceda al sistema con sus propias credenciales.</small>
+            </div>
             <button class="btn btn-primary btn-block">${isEdit ? 'Actualizar' : 'Registrar'} Trabajador</button>
         </form>
     `;
     abrirModal(isEdit ? 'Editar Trabajador' : 'Nuevo Trabajador', html);
+
+    // Cargar usuarios disponibles para vincular
+    fetch('/api/personal/usuarios-disponibles').then(r => r.json()).then(usuarios => {
+        const sel = document.getElementById('fp_usu');
+        if (isEdit && personal.id_usuario) {
+            const opt = document.createElement('option');
+            opt.value = personal.id_usuario;
+            opt.textContent = personal.username + ' (Vinculado actualmente)';
+            opt.selected = true;
+            sel.appendChild(opt);
+        }
+        usuarios.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.id_usuario;
+            opt.textContent = `${u.username} (${u.nombre_completo})`;
+            sel.appendChild(opt);
+        });
+    });
+
     document.getElementById('formPersonal').onsubmit = async (e) => {
         e.preventDefault();
         const data = {
@@ -1248,7 +1573,8 @@ function mostrarFormPersonal(personal = null) {
             puesto: document.getElementById('fp_pue').value,
             especialidad: document.getElementById('fp_esp').value,
             tarifa_hora: document.getElementById('fp_tar').value,
-            telefono: document.getElementById('fp_tel').value
+            telefono: document.getElementById('fp_tel').value,
+            id_usuario: document.getElementById('fp_usu').value || null
         };
 
         const url = isEdit ? `/api/personal/${personal.id_trabajador}` : '/api/personal';
@@ -1702,4 +2028,355 @@ async function renderMonitoreo() {
         console.error('Error en monitoreo:', err);
         document.getElementById('listaMonitoreo').innerHTML = '<tr><td colspan="7" style="text-align:center; color:red;">Error al cargar datos</td></tr>';
     }
+}
+
+// --- MÓDULO DE MIS TAREAS (TABLAS DE TRABAJO) ---
+
+function renderMisTareas() {
+    const area = document.getElementById('contentArea');
+    const rol = usuarioActual.nombre_rol;
+
+    area.innerHTML = `
+        <div id="tareasContent">
+            <div class="card" style="text-align:center; padding:50px;">
+                <i class="fas fa-spinner fa-spin fa-3x" style="color:var(--primary-color);"></i>
+                <p style="margin-top:20px;">Cargando tus tareas de ${rol}...</p>
+            </div>
+        </div>
+    `;
+
+    // Cargar vista según rol
+    setTimeout(() => {
+        if (rol === 'Supervisor') renderTareasSupervisor();
+        else if (rol === 'Almacenero') renderTareasAlmacenero();
+        else if (rol === 'Contador') renderTareasContador();
+        else if (rol === 'Ingeniero') renderTareasIngeniero();
+        else {
+            document.getElementById('tareasContent').innerHTML = `
+                <div class="card" style="text-align:center; padding:50px;">
+                    <i class="fas fa-check-circle fa-4x" style="color:var(--success); margin-bottom:20px;"></i>
+                    <h3>¡Todo al día!</h3>
+                    <p>No tienes tareas críticas pendientes asignadas para tu rol en este momento.</p>
+                </div>
+            `;
+        }
+    }, 500);
+}
+
+// 1. TAREAS SUPERVISOR: Asistencia Diaria
+async function renderTareasSupervisor() {
+    const container = document.getElementById('tareasContent');
+    try {
+        const res = await fetch('/api/personal');
+        const personal = await res.json();
+        
+        container.innerHTML = `
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h3><i class="fas fa-calendar-check"></i> Control de Asistencia Diaria</h3>
+                    <span class="badge" style="background:#f1c40f; color:black;">Hoy: ${new Date().toLocaleDateString()}</span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Trabajador</th>
+                            <th>Cargo</th>
+                            <th>Estado de Asistencia</th>
+                            <th>Observaciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${personal.map(p => `
+                            <tr>
+                                <td><strong>${p.nombre_completo}</strong></td>
+                                <td>${p.puesto}</td>
+                                <td>
+                                    <select class="form-control-sm" style="width:120px;">
+                                        <option value="Presente">Presente</option>
+                                        <option value="Falta">Falta</option>
+                                        <option value="Tardanza">Tardanza</option>
+                                        <option value="Permiso">Permiso</option>
+                                    </select>
+                                </td>
+                                <td><input type="text" placeholder="Nota..." style="width:100%; padding:4px;"></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div style="margin-top:20px; text-align:right;">
+                    <button class="btn btn-primary" onclick="showToast('Asistencia guardada correctamente (Simulación)')">
+                        <i class="fas fa-save"></i> Guardar Asistencia de Hoy
+                    </button>
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        container.innerHTML = '<div class="alert alert-danger">Error al cargar personal</div>';
+    }
+}
+
+// 2. TAREAS ALMACENERO: Pedidos por Entregar
+async function renderTareasAlmacenero() {
+    const container = document.getElementById('tareasContent');
+    try {
+        const res = await fetch('/api/reservas');
+        const reservas = await res.json();
+        const pendientes = reservas.filter(r => r.estado === 'Pendiente');
+
+        container.innerHTML = `
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h3><i class="fas fa-shipping-fast"></i> Despacho de Pedidos Pendientes</h3>
+                    <span class="badge badge-danger">${pendientes.length} Pedidos</span>
+                </div>
+                ${pendientes.length === 0 ? '<p>No hay despachos pendientes.</p>' : `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Cliente</th>
+                                <th>Producto</th>
+                                <th>Cant.</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${pendientes.map(r => `
+                                <tr>
+                                    <td>${new Date(r.fecha_reserva).toLocaleDateString()}</td>
+                                    <td>${r.cliente}</td>
+                                    <td>${r.producto_nombre}</td>
+                                    <td>${r.cantidad}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" onclick="showToast('Pedido despachado y stock actualizado')">
+                                            Entregar
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `}
+            </div>
+        `;
+    } catch (err) {
+        container.innerHTML = '<div class="alert alert-danger">Error al cargar pedidos</div>';
+    }
+}
+
+// 3. TAREAS CONTADOR: Gastos por Aprobar
+async function renderTareasContador() {
+    const container = document.getElementById('tareasContent');
+    container.innerHTML = `
+        <div class="card">
+            <h3><i class="fas fa-file-invoice-dollar"></i> Validación de Gastos en Campo</h3>
+            <p>Sección para aprobar o rechazar facturas subidas por ingenieros.</p>
+            <div style="padding:40px; text-align:center; background:#f9f9f9; border-radius:8px; border:2px dashed #ddd;">
+                <i class="fas fa-check-double fa-3x" style="color:#ccc;"></i>
+                <p style="margin-top:15px; color:#666;">No hay gastos nuevos pendientes de validación fiscal.</p>
+            </div>
+        </div>
+    `;
+}
+
+// 4. TAREAS INGENIERO: Alertas de Presupuesto
+async function renderTareasIngeniero() {
+    const container = document.getElementById('tareasContent');
+    try {
+        const res = await fetch('/api/reportes/financiero');
+        const reporte = await res.json();
+        const criticos = reporte.filter(r => (r.gasto_total / r.presupuesto) > 0.8);
+
+        container.innerHTML = `
+            <div class="card">
+                <h3><i class="fas fa-exclamation-triangle"></i> Control de Presupuesto Crítico (>80%)</h3>
+                ${criticos.length === 0 ? '<p>Todas tus obras están dentro de los márgenes saludables.</p>' : `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Obra</th>
+                                <th>Presupuesto</th>
+                                <th>Gasto Real</th>
+                                <th>%</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${criticos.map(c => `
+                                <tr>
+                                    <td>${c.nombre_proyecto}</td>
+                                    <td>${fmt.format(c.presupuesto)}</td>
+                                    <td>${fmt.format(c.gasto_total)}</td>
+                                    <td style="color:red; font-weight:bold;">${((c.gasto_total/c.presupuesto)*100).toFixed(1)}%</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline" onclick="showToast('Solicitud de ampliación enviada')">
+                                            Solicitar Ampliación
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `}
+            </div>
+        `;
+    } catch (err) {
+        container.innerHTML = '<div class="alert alert-danger">Error al cargar reportes</div>';
+    }
+}
+// ---------------------------------------------------------
+// MÓDULO DE MENSAJERÍA INTERNA
+// ---------------------------------------------------------
+
+async function abrirChatSoporte() {
+    const html = `
+        <form id="formTicket">
+            <div class="form-group-modal">
+                <label>Asunto / Motivo de consulta</label>
+                <input type="text" id="tk_asunto" required placeholder="Ej: Consulta sobre stock de cemento">
+            </div>
+            <div class="form-group-modal">
+                <label>Mensaje detallado</label>
+                <textarea id="tk_contenido" required rows="5" placeholder="Escribe aquí tu consulta..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Enviar Mensaje Interno</button>
+        </form>
+    `;
+    abrirModal('Nuevo Ticket de Soporte', html);
+
+    document.getElementById('formTicket').onsubmit = async (e) => {
+        e.preventDefault();
+        const data = {
+            id_emisor: usuarioActual.id_usuario,
+            id_receptor: null, // Para Admin
+            asunto: document.getElementById('tk_asunto').value,
+            contenido: document.getElementById('tk_contenido').value
+        };
+
+        try {
+            const res = await fetch('/api/mensajes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                document.getElementById('modalContainer').classList.add('hidden');
+                showToast('✓ Mensaje enviado al equipo de soporte');
+            }
+        } catch (err) {
+            showToast('Error al enviar mensaje', 'error');
+        }
+    };
+}
+
+async function renderBuzonMensajes() {
+    const area = document.getElementById('contentArea');
+    area.innerHTML = `
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3><i class="fas fa-inbox"></i> Mensajes Recibidos</h3>
+                <button class="btn btn-outline btn-sm" onclick="renderBuzonMensajes()"><i class="fas fa-sync"></i> Actualizar</button>
+            </div>
+            <div id="listaMensajes">Cargando buzón...</div>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`/api/mensajes/${usuarioActual.id_usuario}`);
+        const mensajes = await res.json();
+        const lista = document.getElementById('listaMensajes');
+
+        if (mensajes.length === 0) {
+            lista.innerHTML = '<p style="text-align:center; padding:40px; color:#999;">No tienes mensajes nuevos.</p>';
+            return;
+        }
+
+        lista.innerHTML = `
+            <div style="display:grid; gap:15px;">
+                ${mensajes.map(m => `
+                    <div class="card" style="border: 1px solid ${m.leido ? '#eee' : 'var(--primary-color)'}; border-left: 4px solid ${m.leido ? '#ddd' : 'var(--primary-color)'}; cursor:pointer;" onclick="verDetalleMensaje(${JSON.stringify(m).replace(/'/g, "&apos;")})">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                            <strong>${m.emisor_nombre} (${m.emisor_rol})</strong>
+                            <span style="font-size:0.8rem; color:#888;">${new Date(m.fecha_envio).toLocaleString()}</span>
+                        </div>
+                        <div style="font-weight:700;">${m.asunto}</div>
+                        <p style="margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#666;">${m.contenido}</p>
+                        ${!m.leido ? '<span class="badge badge-danger" style="margin-top:10px;">Nuevo</span>' : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } catch (err) {
+        document.getElementById('listaMensajes').innerHTML = 'Error al cargar mensajes.';
+    }
+}
+
+async function verDetalleMensaje(m) {
+    const html = `
+        <div style="padding:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:10px;">
+                <div>
+                    <strong>De:</strong> ${m.emisor_nombre}<br>
+                    <strong>Fecha:</strong> ${new Date(m.fecha_envio).toLocaleString()}
+                </div>
+                <span class="badge" style="background:#eee; color:#333;">${m.emisor_rol}</span>
+            </div>
+            <div style="font-weight:bold; font-size:1.1rem; margin-bottom:15px;">Asunto: ${m.asunto}</div>
+            <div style="background:#f9f9f9; padding:20px; border-radius:8px; line-height:1.6; white-space: pre-wrap;">${m.contenido}</div>
+            
+            <div style="margin-top:25px;">
+                <button class="btn btn-primary" onclick="responderMensaje(${m.id_emisor}, '${m.asunto}')"><i class="fas fa-reply"></i> Responder</button>
+            </div>
+        </div>
+    `;
+    abrirModal('Lectura de Mensaje', html);
+
+    // Marcar como leído
+    if (!m.leido) {
+        await fetch(`/api/mensajes/${m.id_mensaje}/leido`, { method: 'PUT' });
+        // No recargamos el buzón inmediatamente para no cerrar el modal, 
+        // pero podrías hacerlo al cerrar el modal.
+    }
+}
+
+function responderMensaje(idReceptor, asuntoOriginal) {
+    const html = `
+        <form id="formRespuesta">
+            <div class="form-group-modal">
+                <label>Asunto</label>
+                <input type="text" id="res_asunto" value="RE: ${asuntoOriginal}" required>
+            </div>
+            <div class="form-group-modal">
+                <label>Respuesta</label>
+                <textarea id="res_contenido" required rows="5" placeholder="Escribe tu respuesta aquí..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Enviar Respuesta</button>
+        </form>
+    `;
+    abrirModal('Responder Mensaje', html);
+
+    document.getElementById('formRespuesta').onsubmit = async (e) => {
+        e.preventDefault();
+        const data = {
+            id_emisor: usuarioActual.id_usuario,
+            id_receptor: idReceptor,
+            asunto: document.getElementById('res_asunto').value,
+            contenido: document.getElementById('res_contenido').value
+        };
+
+        try {
+            const res = await fetch('/api/mensajes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                document.getElementById('modalContainer').classList.add('hidden');
+                showToast('✓ Respuesta enviada');
+                renderBuzonMensajes();
+            }
+        } catch (err) {
+            showToast('Error al enviar respuesta', 'error');
+        }
+    };
 }
