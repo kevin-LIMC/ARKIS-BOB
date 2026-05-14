@@ -36,10 +36,12 @@ function initApp() {
                     
                     navegarA('dashboard');
                 } else {
-                    alert('Usuario o contraseña incorrectos');
+                    const errData = await response.json().catch(() => ({}));
+                    alert(errData.error || 'Usuario o contraseña incorrectos');
                 }
             } catch (error) {
-                alert('Error de conexión con el servidor');
+                console.error('Error en Login:', error);
+                alert('Error al iniciar sesión: ' + (error.name === 'TypeError' ? 'Error de conexión con el servidor' : 'Error interno de la aplicación'));
             }
         });
     }
@@ -163,6 +165,7 @@ function iniciarRastreoActividad() {
 function aplicarPermisos() {
     if (!usuarioActual) return;
     const permisos = usuarioActual.permisos || "";
+    const nombreRol = usuarioActual.nombre_rol || "";
     const esAdmin = permisos === '*';
 
     document.querySelectorAll('.menu-item').forEach(item => {
@@ -176,7 +179,6 @@ function aplicarPermisos() {
 
         // Lógica de visibilidad para páginas específicas
         let visible = false;
-        const nombreRol = usuarioActual.nombre_rol;
 
         if (esAdmin) {
             // El admin no necesita catálogo, reservas ni las tareas operativas individuales
